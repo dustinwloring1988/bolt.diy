@@ -1,3 +1,4 @@
+# logs
 logs
 *.log
 npm-debug.log*
@@ -6,11 +7,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# dependencies
 node_modules
 dist
 dist-ssr
 *.local
 
+# editor directories and files
 .vscode/*
 .vscode/launch.json
 !.vscode/extensions.json
@@ -22,6 +25,7 @@ dist-ssr
 *.sln
 *.sw?
 
+# project specific
 /.history
 /.cache
 /build
@@ -40,3 +44,12 @@ site
 
 # commit file ignore
 app/commit.json
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/e2e-results/
+/e2e-report/
+*.trace.zip
