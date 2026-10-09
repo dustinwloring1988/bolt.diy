@@ -15,6 +15,7 @@ import { createMessage, getMessageText, type AnyPart } from '~/lib/persistence/m
 import { chatStore } from '~/lib/stores/chat';
 import { logStore } from '~/lib/stores/logs';
 import { useMCPStore } from '~/lib/stores/mcp';
+import { skillsStore } from '~/lib/stores/skills';
 import { streamingState } from '~/lib/stores/streaming';
 import { supabaseConnection } from '~/lib/stores/supabase';
 import { workbenchStore } from '~/lib/stores/workbench';
@@ -108,7 +109,21 @@ export const ChatImpl = memo(
     );
 
     // const _supabaseAlert = undefined;
-    const { activeProviders, promptId, autoSelectTemplate, contextOptimizationEnabled } = useSettings();
+    const {
+      activeProviders,
+      promptId,
+      autoSelectTemplate,
+      contextOptimizationEnabled,
+      webSearchEnabled,
+      webSearchProvider,
+    } = useSettings();
+
+    const skills = useStore(skillsStore);
+
+    const enabledSkills = skills
+      .filter((skill) => skill.enabled)
+      .map(({ id, name, content }) => ({ id, name, content }));
+
     const [llmErrorAlert, setLlmErrorAlert] = useState<LlmErrorAlertType | undefined>(undefined);
 
     const [model, setModel] = useState(() => {
@@ -156,6 +171,9 @@ export const ChatImpl = memo(
         },
       },
       maxLLMSteps: mcpSettings.maxLLMSteps,
+      webSearchEnabled,
+      webSearchProvider,
+      enabledSkills,
     });
 
     bodyRef.current = {
@@ -174,6 +192,9 @@ export const ChatImpl = memo(
         },
       },
       maxLLMSteps: mcpSettings.maxLLMSteps,
+      webSearchEnabled,
+      webSearchProvider,
+      enabledSkills,
     };
 
     const {

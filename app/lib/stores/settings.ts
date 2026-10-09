@@ -261,6 +261,8 @@ const SETTINGS_KEYS = {
   EVENT_LOGS: 'isEventLogsEnabled',
   PROMPT_ID: 'promptId',
   DEVELOPER_MODE: 'isDeveloperMode',
+  WEB_SEARCH_ENABLED: 'webSearchEnabled',
+  WEB_SEARCH_PROVIDER: 'webSearchProvider',
 } as const;
 
 // Initialize settings from localStorage or defaults
@@ -290,8 +292,14 @@ const getInitialSettings = () => {
     eventLogs: getStoredBoolean(SETTINGS_KEYS.EVENT_LOGS, true),
     promptId: isBrowser ? localStorage.getItem(SETTINGS_KEYS.PROMPT_ID) || 'default' : 'default',
     developerMode: getStoredBoolean(SETTINGS_KEYS.DEVELOPER_MODE, false),
+    webSearchEnabled: getStoredBoolean(SETTINGS_KEYS.WEB_SEARCH_ENABLED, false),
+    webSearchProvider: (isBrowser
+      ? localStorage.getItem(SETTINGS_KEYS.WEB_SEARCH_PROVIDER) || 'exa'
+      : 'exa') as WebSearchProvider,
   };
 };
+
+export type WebSearchProvider = 'exa' | 'duckduckgo';
 
 // Initialize stores with persisted values
 const initialSettings = getInitialSettings();
@@ -301,6 +309,8 @@ export const autoSelectStarterTemplate = atom<boolean>(initialSettings.autoSelec
 export const enableContextOptimizationStore = atom<boolean>(initialSettings.contextOptimization);
 export const isEventLogsEnabled = atom<boolean>(initialSettings.eventLogs);
 export const promptStore = atom<string>(initialSettings.promptId);
+export const webSearchEnabledStore = atom<boolean>(initialSettings.webSearchEnabled);
+export const webSearchProviderStore = atom<WebSearchProvider>(initialSettings.webSearchProvider);
 
 // Helper functions to update settings with persistence
 export const updateLatestBranch = (enabled: boolean) => {
@@ -326,6 +336,16 @@ export const updateEventLogs = (enabled: boolean) => {
 export const updatePromptId = (id: string) => {
   promptStore.set(id);
   localStorage.setItem(SETTINGS_KEYS.PROMPT_ID, id);
+};
+
+export const updateWebSearchEnabled = (enabled: boolean) => {
+  webSearchEnabledStore.set(enabled);
+  localStorage.setItem(SETTINGS_KEYS.WEB_SEARCH_ENABLED, JSON.stringify(enabled));
+};
+
+export const updateWebSearchProvider = (provider: WebSearchProvider) => {
+  webSearchProviderStore.set(provider);
+  localStorage.setItem(SETTINGS_KEYS.WEB_SEARCH_PROVIDER, provider);
 };
 
 // Initialize tab configuration from localStorage or defaults

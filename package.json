@@ -160,13 +160,13 @@
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },
-"devDependencies": {
+  "devDependencies": {
     "@blitz/eslint-plugin": "0.1.5",
     "@cloudflare/vite-plugin": "^1.63.0",
+    "@cloudflare/workers-types": "^5.20261009.1",
     "@electron/notarize": "^3.1.1",
     "@iconify-json/ph": "^1.2.1",
     "@iconify/types": "^2.0.0",
-    "changeset": "^0.2.6",
     "@playwright/test": "^1.64.0",
     "@react-router/dev": "^8.4.0",
     "@react-router/fs-routes": "^8.4.0",
@@ -182,6 +182,7 @@
     "@types/unist": "^3.0.3",
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.3",
+    "changeset": "^0.2.6",
     "concurrently": "^10.0.5",
     "crypto-browserify": "^3.12.1",
     "electron": "^44.5.1",

@@ -1,4 +1,6 @@
+import { useStore } from '@nanostores/react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { skillsStore, toggleSkill } from '~/lib/stores/skills';
 import { classNames } from '~/utils/classNames';
 
 interface AttachmentMenuProps {
@@ -20,6 +22,8 @@ export function AttachmentMenu({
   enhancingPrompt = false,
   isEnhanceDisabled = false,
 }: AttachmentMenuProps) {
+  const skills = useStore(skillsStore);
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -167,6 +171,68 @@ export function AttachmentMenu({
                   <div className="i-ph:github-logo text-lg"></div>
                   <span>GitHub</span>
                 </DropdownMenu.Item>
+              </DropdownMenu.SubContent>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Sub>
+
+          <DropdownMenu.Sub>
+            <DropdownMenu.SubTrigger
+              className={classNames(
+                'flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
+                'text-bolt-elements-textPrimary',
+                'hover:bg-bolt-elements-background-depth-3',
+                'outline-none transition-colors',
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <div className="i-ph:star text-lg"></div>
+                <span>Skills</span>
+              </div>
+              <div className="i-ph:caret-right text-sm"></div>
+            </DropdownMenu.SubTrigger>
+
+            <DropdownMenu.Portal>
+              <DropdownMenu.SubContent
+                className={classNames(
+                  'min-w-[220px] rounded-lg p-1',
+                  'bg-bolt-elements-background-depth-2',
+                  'border border-bolt-elements-borderColor',
+                  'shadow-lg',
+                  'animate-in fade-in-80 zoom-in-95',
+                  'data-[side=right]:slide-in-from-left-2',
+                  'data-[side=left]:slide-in-from-right-2',
+                  'z-[1000]',
+                )}
+                sideOffset={8}
+              >
+                {skills.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-bolt-elements-textTertiary">No skills available</div>
+                ) : (
+                  skills.map((skill) => (
+                    <DropdownMenu.CheckboxItem
+                      key={skill.id}
+                      checked={skill.enabled}
+                      onCheckedChange={(checked) => toggleSkill(skill.id, checked)}
+                      className={classNames(
+                        'flex items-start gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
+                        'text-bolt-elements-textPrimary',
+                        'hover:bg-bolt-elements-background-depth-3',
+                        'outline-none transition-colors',
+                        'data-[highlighted]:bg-bolt-elements-background-depth-3',
+                      )}
+                    >
+                      <DropdownMenu.ItemIndicator className="flex items-center justify-center shrink-0 mt-0.5">
+                        <div className="i-ph:check text-sm text-bolt-elements-textPrimary"></div>
+                      </DropdownMenu.ItemIndicator>
+                      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                        <span className="font-medium">{skill.name}</span>
+                        <span className="text-xs text-bolt-elements-textTertiary line-clamp-2">
+                          {skill.description}
+                        </span>
+                      </div>
+                    </DropdownMenu.CheckboxItem>
+                  ))
+                )}
               </DropdownMenu.SubContent>
             </DropdownMenu.Portal>
           </DropdownMenu.Sub>

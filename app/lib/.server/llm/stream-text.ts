@@ -93,6 +93,7 @@ export async function streamText(props: {
   messageSliceId?: number;
   chatMode?: 'discuss' | 'build';
   designScheme?: DesignScheme;
+  enabledSkills?: Array<{ id: string; name: string; content: string }>;
 
   /*
    * v7 returns a single stream. Callers that used to iterate result.fullStream
@@ -114,6 +115,7 @@ export async function streamText(props: {
     summary,
     chatMode,
     designScheme,
+    enabledSkills,
     onChunk,
   } = props;
 
@@ -224,6 +226,22 @@ export async function streamText(props: {
   // Inject workstyle commentary guidance for build mode
   if (chatMode === 'build') {
     systemPrompt = withDevelopmentCommentaryWorkstyle(systemPrompt);
+  }
+
+  // Inject enabled skills into system prompt
+  if (enabledSkills && enabledSkills.length > 0) {
+    const skillsContent = enabledSkills
+      .map((skill) => `<skill name="${skill.name}">\n${skill.content}\n</skill>`)
+      .join('\n\n');
+
+    systemPrompt = `${systemPrompt}
+
+<enabled_skills>
+The following skills have been enabled by the user. Follow their guidance when relevant to the current task:
+
+${skillsContent}
+</enabled_skills>
+`;
   }
 
   if (chatMode === 'build' && contextFiles && contextOptimization) {

@@ -1,6 +1,5 @@
 import React from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
-import { APIKeyManager } from './APIKeyManager';
 import { AttachmentMenu } from './AttachmentMenu';
 import styles from './BaseChat.module.scss';
 import FilePreview from './FilePreview';
@@ -12,10 +11,8 @@ import { WebSearch } from './WebSearch.client';
 import { ModelSelector } from '~/components/chat/ModelSelector';
 import { SpeechRecognitionButton } from '~/components/chat/SpeechRecognition';
 import { ColorSchemeDialog } from '~/components/ui/ColorSchemeDialog';
-import { IconButton } from '~/components/ui/IconButton';
 import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
 import type { ElementInfo } from '~/components/workbench/Inspector';
-import { LOCAL_PROVIDERS } from '~/lib/stores/settings';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ProviderInfo } from '~/types/model';
 import { classNames } from '~/utils/classNames';
@@ -104,36 +101,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
         <rect className={classNames(styles.PromptEffectLine)} pathLength="100" strokeLinecap="round"></rect>
         <rect className={classNames(styles.PromptShine)} x="48" y="24" width="70" height="1"></rect>
       </svg>
-      <div>
-        <ClientOnly>
-          {() => (
-            <div className={props.isModelSettingsCollapsed ? 'hidden' : ''}>
-              <ModelSelector
-                key={props.provider?.name + ':' + props.modelList.length}
-                model={props.model}
-                setModel={props.setModel}
-                modelList={props.modelList}
-                provider={props.provider}
-                setProvider={props.setProvider}
-                providerList={props.providerList || (PROVIDER_LIST as ProviderInfo[])}
-                apiKeys={props.apiKeys}
-                modelLoading={props.isModelLoading}
-              />
-              {(props.providerList || []).length > 0 &&
-                props.provider &&
-                !LOCAL_PROVIDERS.includes(props.provider.name) && (
-                  <APIKeyManager
-                    provider={props.provider}
-                    apiKey={props.apiKeys[props.provider.name] || ''}
-                    setApiKey={(key) => {
-                      props.onApiKeysChange(props.provider.name, key);
-                    }}
-                  />
-                )}
-            </div>
-          )}
-        </ClientOnly>
-      </div>
+      {/* Model selector moved to prompt box - this section is now empty */}
       <FilePreview
         files={props.uploadedFiles}
         imageDataList={props.imageDataList}
@@ -264,28 +232,30 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
           <div className="flex gap-1 items-center">
             <ClientOnly>
               {() => (
-                <AttachmentMenu
-                  onAttachFile={() => props.handleFileUpload()} // Opens image file picker (image/* only)
-                  onOpenDesignDialog={() => {
-                    /*
-                     * Trigger the design dialog by programmatically clicking the hidden button
-                     * This is a workaround since ColorSchemeDialog manages its own state
-                     */
-                    const designButton = document.querySelector('[title="Design Palette"]') as HTMLButtonElement;
-                    designButton?.click();
-                  }}
-                  onEnhancePrompt={() => {
-                    props.enhancePrompt?.();
-                  }}
-                  onSupabaseConnect={() => {
-                    document.dispatchEvent(new CustomEvent('open-supabase-connection'));
-                  }}
-                  onGithubConnect={() => {
-                    document.dispatchEvent(new CustomEvent('open-github-settings'));
-                  }}
-                  enhancingPrompt={props.enhancingPrompt}
-                  isEnhanceDisabled={props.input.length === 0 || props.enhancingPrompt}
-                />
+                <>
+                  <AttachmentMenu
+                    onAttachFile={() => props.handleFileUpload()} // Opens image file picker (image/* only)
+                    onOpenDesignDialog={() => {
+                      /*
+                       * Trigger the design dialog by programmatically clicking the hidden button
+                       * This is a workaround since ColorSchemeDialog manages its own state
+                       */
+                      const designButton = document.querySelector('[title="Design Palette"]') as HTMLButtonElement;
+                      designButton?.click();
+                    }}
+                    onEnhancePrompt={() => {
+                      props.enhancePrompt?.();
+                    }}
+                    onSupabaseConnect={() => {
+                      document.dispatchEvent(new CustomEvent('open-supabase-connection'));
+                    }}
+                    onGithubConnect={() => {
+                      document.dispatchEvent(new CustomEvent('open-github-settings'));
+                    }}
+                    enhancingPrompt={props.enhancingPrompt}
+                    isEnhanceDisabled={props.input.length === 0 || props.enhancingPrompt}
+                  />
+                </>
               )}
             </ClientOnly>
             {/* Hidden components for programmatic access from menu */}
@@ -302,37 +272,23 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
               onStop={props.stopListening}
               disabled={props.isStreaming}
             />
-            {props.chatStarted && (
-              <IconButton
-                title="Discuss"
-                className={classNames(
-                  'transition-all flex items-center gap-1 px-1.5',
-                  props.chatMode === 'discuss'
-                    ? '!bg-bolt-elements-item-backgroundAccent !text-bolt-elements-item-contentAccent'
-                    : 'bg-bolt-elements-item-backgroundDefault text-bolt-elements-item-contentDefault',
-                )}
-                onClick={() => {
-                  props.setChatMode?.(props.chatMode === 'discuss' ? 'build' : 'discuss');
-                }}
-              >
-                <div className={`i-ph:chats text-xl`} />
-                {props.chatMode === 'discuss' ? <span>Discuss</span> : <span />}
-              </IconButton>
-            )}
-            <IconButton
-              title="Model Settings"
-              className={classNames('transition-all flex items-center gap-1', {
-                'bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent':
-                  props.isModelSettingsCollapsed,
-                'bg-bolt-elements-item-backgroundDefault text-bolt-elements-item-contentDefault':
-                  !props.isModelSettingsCollapsed,
-              })}
-              onClick={() => props.setIsModelSettingsCollapsed(!props.isModelSettingsCollapsed)}
-              disabled={!props.providerList || props.providerList.length === 0}
-            >
-              <div className={`i-ph:caret-${props.isModelSettingsCollapsed ? 'right' : 'down'} text-lg`} />
-              {props.isModelSettingsCollapsed ? <span className="text-xs">{props.model}</span> : <span />}
-            </IconButton>
+
+            <ClientOnly>
+              {() => (
+                <ModelSelector
+                  key={props.provider?.name + ':' + props.modelList.length}
+                  model={props.model}
+                  setModel={props.setModel}
+                  modelList={props.modelList}
+                  provider={props.provider}
+                  setProvider={props.setProvider}
+                  providerList={props.providerList || (PROVIDER_LIST as ProviderInfo[])}
+                  apiKeys={props.apiKeys}
+                  modelLoading={props.isModelLoading}
+                  onApiKeyChange={props.onApiKeysChange}
+                />
+              )}
+            </ClientOnly>
           </div>
           {props.input.length > 3 ? (
             <div className="text-xs text-bolt-elements-textTertiary">

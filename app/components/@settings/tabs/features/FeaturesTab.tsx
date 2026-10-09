@@ -16,6 +16,7 @@ interface FeatureToggle {
   beta?: boolean;
   experimental?: boolean;
   tooltip?: string;
+  subContent?: React.ReactNode;
 }
 
 const FeatureCard = memo(
@@ -62,6 +63,7 @@ const FeatureCard = memo(
         </div>
         <p className="mt-2 text-sm text-bolt-elements-textSecondary">{feature.description}</p>
         {feature.tooltip && <p className="mt-1 text-xs text-bolt-elements-textTertiary">{feature.tooltip}</p>}
+        {feature.subContent && <div className="mt-3">{feature.subContent}</div>}
       </div>
     </motion.div>
   ),
@@ -111,12 +113,16 @@ export default function FeaturesTab() {
     isLatestBranch,
     contextOptimizationEnabled,
     eventLogs,
+    webSearchEnabled,
+    webSearchProvider,
     setAutoSelectTemplate,
     enableLatestBranch,
     enableContextOptimization,
     setEventLogs,
     setPromptId,
     promptId,
+    setWebSearchEnabled,
+    setWebSearchProvider,
   } = useSettings();
 
   // Enable features by default on first load
@@ -170,11 +176,24 @@ export default function FeaturesTab() {
           break;
         }
 
+        case 'webSearch': {
+          setWebSearchEnabled(enabled);
+          toast.success(`Web search ${enabled ? 'enabled' : 'disabled'}`);
+          break;
+        }
+
         default:
           break;
       }
     },
-    [enableLatestBranch, setAutoSelectTemplate, enableContextOptimization, setEventLogs],
+    [
+      enableLatestBranch,
+      setAutoSelectTemplate,
+      enableContextOptimization,
+      setEventLogs,
+      setWebSearchEnabled,
+      setWebSearchProvider,
+    ],
   );
 
   const features = {
@@ -210,6 +229,34 @@ export default function FeaturesTab() {
         icon: 'i-ph:list-bullets',
         enabled: eventLogs,
         tooltip: 'Enabled by default to record detailed logs of system events and user actions',
+      },
+      {
+        id: 'webSearch',
+        title: 'Web Search & Browse',
+        description: 'Let the AI search the web and browse URLs as part of its reasoning',
+        icon: 'i-ph:globe',
+        enabled: webSearchEnabled,
+        beta: true,
+        tooltip:
+          'When enabled, the AI can call web_search and web_browse as tool calls automatically — no need to use the toolbar button manually',
+        subContent: webSearchEnabled ? (
+          <div className="mt-3 pl-4 border-l-2 border-bolt-elements-borderColor">
+            <label className="block text-xs font-medium text-bolt-elements-textSecondary mb-2">Search Provider</label>
+            <select
+              value={webSearchProvider}
+              onChange={(e) => setWebSearchProvider(e.target.value as 'exa' | 'duckduckgo')}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-3 text-bolt-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+            >
+              <option value="exa">Exa (AI-powered, free - no API key needed)</option>
+              <option value="duckduckgo">DuckDuckGo (Privacy-focused keyword search)</option>
+            </select>
+            <p className="text-xs text-bolt-elements-textTertiary mt-2">
+              {webSearchProvider === 'exa'
+                ? 'Exa uses neural search for better results. Works without an API key (rate-limited) or set EXA_API_KEY for higher limits.'
+                : 'DuckDuckGo provides privacy-focused keyword search with no tracking.'}
+            </p>
+          </div>
+        ) : undefined,
       },
     ],
     beta: [],
