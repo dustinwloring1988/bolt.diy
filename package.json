@@ -11,6 +11,7 @@
     "email": "maintainers@bolt.diy"
   },
   "scripts": {
+    "changeset": "changeset",
     "deploy": "pnpm run build && wrangler deploy",
     "build": "react-router build",
     "dev": "node pre-start.cjs  && react-router dev",
@@ -159,13 +160,13 @@
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },
-  "devDependencies": {
+"devDependencies": {
     "@blitz/eslint-plugin": "0.1.5",
     "@cloudflare/vite-plugin": "^1.63.0",
-    "@cloudflare/workers-types": "^5.20261006.1",
     "@electron/notarize": "^3.1.1",
     "@iconify-json/ph": "^1.2.1",
     "@iconify/types": "^2.0.0",
+    "changeset": "^0.2.6",
     "@playwright/test": "^1.64.0",
     "@react-router/dev": "^8.4.0",
     "@react-router/fs-routes": "^8.4.0",
