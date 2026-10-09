@@ -194,7 +194,7 @@ export function AttachmentMenu({
             <DropdownMenu.Portal>
               <DropdownMenu.SubContent
                 className={classNames(
-                  'min-w-[220px] rounded-lg p-1',
+                  'min-w-[180px] rounded-lg p-1',
                   'bg-bolt-elements-background-depth-2',
                   'border border-bolt-elements-borderColor',
                   'shadow-lg',
@@ -213,23 +213,23 @@ export function AttachmentMenu({
                       key={skill.id}
                       checked={skill.enabled}
                       onCheckedChange={(checked) => toggleSkill(skill.id, checked)}
+                      title={skill.description}
                       className={classNames(
-                        'flex items-start gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
+                        'flex items-center gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
                         'text-bolt-elements-textPrimary',
                         'hover:bg-bolt-elements-background-depth-3',
-                        'outline-none transition-colors',
                         'data-[highlighted]:bg-bolt-elements-background-depth-3',
+                        'outline-none transition-colors',
                       )}
                     >
-                      <DropdownMenu.ItemIndicator className="flex items-center justify-center shrink-0 mt-0.5">
-                        <div className="i-ph:check text-sm text-bolt-elements-textPrimary"></div>
-                      </DropdownMenu.ItemIndicator>
-                      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                        <span className="font-medium">{skill.name}</span>
-                        <span className="text-xs text-bolt-elements-textTertiary line-clamp-2">
-                          {skill.description}
-                        </span>
+                      {/* Fixed-width check indicator — always occupies space so names stay aligned */}
+                      <div className="w-4 h-4 shrink-0 flex items-center justify-center">
+                        <DropdownMenu.ItemIndicator>
+                          <div className="i-ph:check text-sm text-bolt-elements-textPrimary"></div>
+                        </DropdownMenu.ItemIndicator>
                       </div>
+                      <div className="i-ph:star text-lg shrink-0"></div>
+                      <span className="truncate">{skill.name}</span>
                     </DropdownMenu.CheckboxItem>
                   ))
                 )}
