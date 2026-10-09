@@ -132,7 +132,7 @@ ${escapeBoltTags(file.content)}
                 title={template.label}
                 disabled={loading || !gitReady}
                 onClick={() => handleTemplateClick(template)}
-                className="items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex appearance-none items-center justify-center border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <div
                   className={`inline-block ${template.icon} w-8 h-8 text-4xl transition-theme hover:text-purple-500 dark:text-white dark:opacity-50 dark:hover:opacity-100 dark:hover:text-purple-400 transition-all grayscale hover:grayscale-0 transition`}

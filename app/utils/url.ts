@@ -30,6 +30,14 @@ export function isAllowedUrl(input: string): boolean {
   const url = new URL(input);
   const hostname = url.hostname.toLowerCase();
 
+  /*
+   * IPv6 literals are rejected until the URL policy can classify all special
+   * ranges (including IPv4-mapped IPv6 addresses) consistently across runtimes.
+   */
+  if (hostname.startsWith('[') && hostname.endsWith(']')) {
+    return false;
+  }
+
   if (BLOCKED_HOSTNAMES.has(hostname)) {
     return false;
   }

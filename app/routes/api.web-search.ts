@@ -21,6 +21,43 @@ const FETCH_HEADERS = {
 };
 
 const MAX_CONTENT_LENGTH = 8000;
+const MAX_REDIRECTS = 5;
+
+/** Fetch a public URL without allowing fetch() to follow unchecked redirects. */
+async function fetchPublicUrl(input: string): Promise<{ response: Response; finalUrl: string }> {
+  let currentUrl = input;
+
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
+    if (!isAllowedUrl(currentUrl)) {
+      throw new Error('URL is not allowed. Only public HTTP/HTTPS URLs are accepted.');
+    }
+
+    const response = await fetch(currentUrl, {
+      headers: FETCH_HEADERS,
+      signal: AbortSignal.timeout(10_000),
+      redirect: 'manual',
+    });
+
+    if (![301, 302, 303, 307, 308].includes(response.status)) {
+      return { response, finalUrl: currentUrl };
+    }
+
+    const location = response.headers.get('location');
+
+    if (!location) {
+      return { response, finalUrl: currentUrl };
+    }
+
+    if (redirects === MAX_REDIRECTS) {
+      throw new Error('Too many redirects');
+    }
+
+    await response.body?.cancel();
+    currentUrl = new URL(location, currentUrl).toString();
+  }
+
+  throw new Error('Too many redirects');
+}
 
 /*
  * ── Exa MCP ────────────────────────────────────────────────────────────────────
@@ -302,10 +339,7 @@ export async function action({ request }: ActionFunctionArgs) {
         );
       }
 
-      const response = await fetch(url, {
-        headers: FETCH_HEADERS,
-        signal: AbortSignal.timeout(10_000),
-      });
+      const { response, finalUrl } = await fetchPublicUrl(url);
 
       if (!response.ok) {
         return Response.json(
@@ -333,7 +367,7 @@ export async function action({ request }: ActionFunctionArgs) {
           title,
           description,
           content: content.length > MAX_CONTENT_LENGTH ? content.slice(0, MAX_CONTENT_LENGTH) + '...' : content,
-          sourceUrl: url,
+          sourceUrl: finalUrl,
         },
       });
     }

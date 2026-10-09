@@ -278,6 +278,34 @@ const getFs = (
     stat: async (path: string) => {
       try {
         const relativePath = pathUtils.relative(webcontainer.workdir, path);
+
+        // Special handling when statting the workdir itself
+        if (relativePath === '.' || relativePath === '') {
+          return {
+            isFile: () => false,
+            isDirectory: () => true,
+            isSymbolicLink: () => false,
+            size: 0,
+            mode: 0o040755, // Directory with rwxr-xr-x permissions
+            mtimeMs: Date.now(),
+            ctimeMs: Date.now(),
+            birthtimeMs: Date.now(),
+            atimeMs: Date.now(),
+            uid: 1000,
+            gid: 1000,
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            rdev: 0,
+            blksize: 4096,
+            blocks: 0,
+            mtime: new Date(),
+            ctime: new Date(),
+            birthtime: new Date(),
+            atime: new Date(),
+          };
+        }
+
         const dirPath = pathUtils.dirname(relativePath);
         const fileName = pathUtils.basename(relativePath);
 
@@ -408,7 +436,15 @@ const pathUtils = {
   },
   relative: (from: string, to: string): string => {
     // Handle empty inputs
-    if (!from || !to) {
+    if (!from && !to) {
+      return '.';
+    }
+
+    if (!from) {
+      return to;
+    }
+
+    if (!to) {
       return '.';
     }
 
