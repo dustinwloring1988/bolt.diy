@@ -50,7 +50,7 @@ const CONNECTOR_LIST = [
   {
     id: 'supabase',
     name: 'Supabase',
-    icon: 'i-simple-icons:supabase',
+    icon: 'i-ph:database',
     description: 'Postgres DB, Auth, Storage & Edge Functions',
     color: 'text-emerald-400',
     docsUrl: 'https://supabase.com/dashboard/account/tokens',
