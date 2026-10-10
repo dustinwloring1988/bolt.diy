@@ -222,6 +222,8 @@ export function OnboardingModal() {
 
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState<Step>('welcome');
+  const [isFinishing, setIsFinishing] = useState(false);
+  const isFinishingRef = useRef(false);
 
   // Profile state
   const [username, setUsername] = useState('');
@@ -254,6 +256,7 @@ export function OnboardingModal() {
   const promptList = PromptLibrary.getList();
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogTitleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     if (!hasCompletedOnboarding() && !profile.username) {
@@ -302,67 +305,83 @@ export function OnboardingModal() {
   }, [step]);
 
   const handleFinish = useCallback(async () => {
-    // Save username
-    if (username.trim()) {
-      updateProfile({ username: username.trim() });
+    if (isFinishingRef.current) {
+      return;
     }
 
-    // Save provider toggles + API keys
-    const currentProviders = providersStore.get();
-    Object.entries(currentProviders).forEach(([name, config]) => {
-      const shouldEnable = enabledProviders.has(name);
+    isFinishingRef.current = true;
+    setIsFinishing(true);
 
-      if (config.settings.enabled !== shouldEnable) {
-        updateProviderSettings(name, { ...config.settings, enabled: shouldEnable } as any);
+    try {
+      // Save username
+      if (username.trim()) {
+        updateProfile({ username: username.trim() });
       }
-    });
 
-    // Save API keys to cookie, removing entries the user cleared.
-    const updatedApiKeys = { ...getApiKeysFromCookies(), ...apiKeys };
-    Object.entries(updatedApiKeys).forEach(([providerName, key]) => {
-      if (!key.trim()) {
-        delete updatedApiKeys[providerName];
-      } else {
-        updatedApiKeys[providerName] = key.trim();
+      // Save provider toggles + API keys
+      const currentProviders = providersStore.get();
+      Object.entries(currentProviders).forEach(([name, config]) => {
+        const shouldEnable = enabledProviders.has(name);
+
+        if (config.settings.enabled !== shouldEnable) {
+          updateProviderSettings(name, { ...config.settings, enabled: shouldEnable } as any);
+        }
+      });
+
+      // Save API keys to cookie, removing entries the user cleared.
+      const updatedApiKeys = { ...getApiKeysFromCookies(), ...apiKeys };
+      Object.entries(updatedApiKeys).forEach(([providerName, key]) => {
+        if (!key.trim()) {
+          delete updatedApiKeys[providerName];
+        } else {
+          updatedApiKeys[providerName] = key.trim();
+        }
+      });
+
+      Cookies.set('apiKeys', JSON.stringify(updatedApiKeys));
+
+      const connectorResults = await Promise.allSettled(
+        CONNECTOR_LIST.map(async (connector) => {
+          const token = connectorTokens[connector.id]?.trim();
+
+          if (!token) {
+            return;
+          }
+
+          if (connector.id === 'github') {
+            await github.connect(token, 'classic');
+          } else if (connector.id === 'supabase') {
+            await fetchSupabaseStats(token);
+            updateSupabaseConnection({ token, isConnected: true });
+          }
+        }),
+      );
+
+      if (connectorResults.some((result) => result.status === 'rejected')) {
+        toast.error('One or more connectors could not be connected. You can try again in Settings → Connectors.');
       }
-    });
 
-    Cookies.set('apiKeys', JSON.stringify(updatedApiKeys));
+      // Save search settings
+      updateWebSearchEnabled(enableSearch);
+      updateWebSearchProvider(searchProvider);
 
-    const connectorResults = await Promise.allSettled(
-      CONNECTOR_LIST.map(async (connector) => {
-        const token = connectorTokens[connector.id]?.trim();
+      // Save prompt selection
+      updatePromptId(selectedPromptId);
 
-        if (!token) {
-          return;
-        }
-
-        if (connector.id === 'github') {
-          await github.connect(token, 'classic');
-        } else if (connector.id === 'supabase') {
-          await fetchSupabaseStats(token);
-          updateSupabaseConnection({ token, isConnected: true });
-        }
-      }),
-    );
-
-    if (connectorResults.some((result) => result.status === 'rejected')) {
-      toast.error('One or more connectors could not be connected. You can try again in Settings → Connectors.');
+      markOnboardingComplete();
+      setStep('done');
+      setTimeout(() => setVisible(false), 1600);
+    } finally {
+      isFinishingRef.current = false;
+      setIsFinishing(false);
     }
-
-    // Save search settings
-    updateWebSearchEnabled(enableSearch);
-    updateWebSearchProvider(searchProvider);
-
-    // Save prompt selection
-    updatePromptId(selectedPromptId);
-
-    markOnboardingComplete();
-    setStep('done');
-    setTimeout(() => setVisible(false), 1600);
   }, [username, enabledProviders, apiKeys, connectorTokens, enableSearch, searchProvider, selectedPromptId, github]);
 
   const handleSkip = useCallback(() => {
+    if (isFinishingRef.current) {
+      return;
+    }
+
     markOnboardingComplete();
     setVisible(false);
   }, []);
@@ -393,7 +412,7 @@ export function OnboardingModal() {
   }));
 
   return (
-    <RadixDialog.Root open={visible} onOpenChange={(open) => !open && handleSkip()}>
+    <RadixDialog.Root open={visible} onOpenChange={(open) => !open && !isFinishingRef.current && handleSkip()}>
       <AnimatePresence>
         <RadixDialog.Portal>
           {/* Backdrop */}
@@ -407,7 +426,13 @@ export function OnboardingModal() {
           </RadixDialog.Overlay>
 
           {/* Modal */}
-          <RadixDialog.Content asChild>
+          <RadixDialog.Content
+            asChild
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              dialogTitleRef.current?.focus();
+            }}
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -419,7 +444,12 @@ export function OnboardingModal() {
                 'rounded-2xl shadow-2xl overflow-hidden',
               )}
             >
-              <RadixDialog.Title className="sr-only">Bolt setup: {step}</RadixDialog.Title>
+              <RadixDialog.Title ref={dialogTitleRef} tabIndex={-1} className="sr-only">
+                Bolt setup: {step}
+              </RadixDialog.Title>
+              <RadixDialog.Description className="sr-only">
+                Set up your profile, AI providers, connectors, search, and preferred prompt.
+              </RadixDialog.Description>
               {/* Purple accent top bar */}
               <div className="h-0.5 w-full bg-gradient-to-r from-purple-600 via-purple-400 to-purple-600" />
 
@@ -437,6 +467,7 @@ export function OnboardingModal() {
                   <button
                     type="button"
                     onClick={handleSkip}
+                    disabled={isFinishing}
                     className="bg-transparent text-xs text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors"
                   >
                     Skip all
@@ -545,7 +576,7 @@ export function OnboardingModal() {
                           />
                         </div>
                       </div>
-                      <NavButtons onBack={goBack} onNext={goNext} nextLabel="Continue" />
+                      <NavButtons onBack={goBack} onNext={goNext} nextLabel="Continue" disabled={isFinishing} />
                     </StepPane>
                   )}
 
@@ -659,7 +690,7 @@ export function OnboardingModal() {
                         })}
                       </div>
 
-                      <NavButtons onBack={goBack} onNext={goNext} nextLabel="Continue" />
+                      <NavButtons onBack={goBack} onNext={goNext} nextLabel="Continue" disabled={isFinishing} />
                     </StepPane>
                   )}
 
@@ -761,7 +792,7 @@ export function OnboardingModal() {
                         })}
                       </div>
 
-                      <NavButtons onBack={goBack} onNext={goNext} nextLabel="Continue" />
+                      <NavButtons onBack={goBack} onNext={goNext} nextLabel="Continue" disabled={isFinishing} />
                     </StepPane>
                   )}
 
@@ -816,7 +847,7 @@ export function OnboardingModal() {
                         </div>
                       </ToggleCard>
 
-                      <NavButtons onBack={goBack} onNext={goNext} nextLabel="Continue" />
+                      <NavButtons onBack={goBack} onNext={goNext} nextLabel="Continue" disabled={isFinishing} />
                     </StepPane>
                   )}
 
@@ -868,7 +899,13 @@ export function OnboardingModal() {
                         ))}
                       </div>
 
-                      <NavButtons onBack={goBack} onNext={handleFinish} nextLabel="Finish setup" nextPrimary />
+                      <NavButtons
+                        onBack={goBack}
+                        onNext={handleFinish}
+                        nextLabel={isFinishing ? 'Finishing…' : 'Finish setup'}
+                        nextPrimary
+                        disabled={isFinishing}
+                      />
                     </StepPane>
                   )}
 
@@ -913,12 +950,14 @@ function NavButtons({
   nextLabel = 'Next',
   nextPrimary = false,
   nextDisabled = false,
+  disabled = false,
 }: {
   onBack?: () => void;
   onNext: () => void;
   nextLabel?: string;
   nextPrimary?: boolean;
   nextDisabled?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex gap-2.5 pt-1">
@@ -926,6 +965,7 @@ function NavButtons({
         <button
           type="button"
           onClick={onBack}
+          disabled={disabled}
           className="flex-1 px-4 py-2.5 rounded-xl text-sm border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-3 transition-colors"
         >
           Back
@@ -934,7 +974,7 @@ function NavButtons({
       <button
         type="button"
         onClick={onNext}
-        disabled={nextDisabled}
+        disabled={disabled || nextDisabled}
         className={classNames(
           'flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors',
           nextPrimary

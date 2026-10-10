@@ -52,7 +52,14 @@ async function askChoice(question, min, max) {
 
 async function askYesNo(question) {
   while (true) {
-    const answer = (await rl.question(`${question} (y/n): `)).trim().toLowerCase();
+    let answer;
+
+    try {
+      answer = (await rl.question(`${question} (y/n): `)).trim().toLowerCase();
+    } catch (error) {
+      if (input.readableEnded) return false;
+      throw error;
+    }
 
     if (['y', 'yes'].includes(answer)) return true;
     if (['n', 'no'].includes(answer)) return false;
@@ -85,9 +92,15 @@ async function verifySupabaseCredentials(projectUrl, publishableKey) {
   if (!response.ok) {
     throw new Error(`Supabase verification failed (${response.status}). Check the URL and publishable key.`);
   }
+
+  return url.origin;
 }
 
 async function main() {
+  if (!input.isTTY) {
+    throw new Error('The setup wizard requires an interactive terminal.');
+  }
+
   console.log('bolt.diy Setup Wizard\n\nSelect an AI provider:');
   providers.forEach((provider, index) => console.log(`${index + 1}. ${provider.name}`));
 
@@ -103,10 +116,10 @@ async function main() {
     const publishableKey = await askRequired('Enter the Supabase publishable/anon key: ');
 
     console.log('Verifying the Supabase project URL and publishable key...');
-    await verifySupabaseCredentials(projectUrl, publishableKey);
+    const verifiedUrl = await verifySupabaseCredentials(projectUrl, publishableKey);
 
     entries.push(
-      ['VITE_SUPABASE_URL', projectUrl],
+      ['VITE_SUPABASE_URL', verifiedUrl],
       ['VITE_SUPABASE_ANON_KEY', publishableKey],
       ['VITE_SUPABASE_VERIFICATION_STATUS', 'verified'],
     );

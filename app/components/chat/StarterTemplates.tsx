@@ -64,12 +64,20 @@ const StarterTemplates: React.FC<StarterTemplatesProps> = ({ importChat }) => {
         .map((filePath) => {
           const { data: content, encoding } = data[filePath];
 
-          const textContent =
-            typeof content === 'string'
-              ? content
-              : content instanceof Uint8Array && getEncoding(Buffer.from(content), { chunkLength: 100 }) !== 'binary'
-                ? new TextDecoder('utf-8', { fatal: true }).decode(content)
-                : '';
+          let textContent = '';
+
+          try {
+            if (typeof content === 'string') {
+              textContent = content;
+            } else if (
+              content instanceof Uint8Array &&
+              getEncoding(Buffer.from(content), { chunkLength: 100 }) !== 'binary'
+            ) {
+              textContent = new TextDecoder('utf-8', { fatal: true }).decode(content);
+            }
+          } catch {
+            // Ignore a malformed text file without cancelling the template import.
+          }
 
           return {
             path: filePath,

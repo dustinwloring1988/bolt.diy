@@ -140,6 +140,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [transcript, setTranscript] = useState('');
     const [isModelLoading, setIsModelLoading] = useState<string | undefined>('all');
     const apiKeyFetchSequence = useRef(new Map<string, number>());
+    const allProviderFetchSequence = useRef(0);
 
     const expoUrl = useStore(expoUrlAtom);
     const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -202,10 +203,15 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
           Cookies.remove('apiKeys');
         }
 
+        const sequence = ++allProviderFetchSequence.current;
         setIsModelLoading('all');
         fetch('/api/models')
           .then((response) => response.json())
           .then((data) => {
+            if (sequence !== allProviderFetchSequence.current) {
+              return;
+            }
+
             const typedData = data as { modelList: ModelInfo[] };
             setModelList(typedData.modelList);
           })
@@ -213,12 +219,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             console.error('Error fetching model list:', error);
           })
           .finally(() => {
-            setIsModelLoading(undefined);
+            if (sequence === allProviderFetchSequence.current) {
+              setIsModelLoading(undefined);
+            }
           });
       }
     }, [providerList, provider]);
 
     const onApiKeysChange = async (providerName: string, apiKey: string) => {
+      allProviderFetchSequence.current += 1;
+
       const sequence = (apiKeyFetchSequence.current.get(providerName) ?? 0) + 1;
       apiKeyFetchSequence.current.set(providerName, sequence);
 

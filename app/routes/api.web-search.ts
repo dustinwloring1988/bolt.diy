@@ -11,6 +11,7 @@
  */
 
 import type { ActionFunctionArgs } from 'react-router';
+import { withSecurity } from '~/lib/security';
 import { isAllowedUrl } from '~/utils/url';
 
 const FETCH_HEADERS = {
@@ -320,7 +321,7 @@ function extractMeta(html: string, attr: string): string {
 
 // ── Route handler ───────────────────────────────────────────────────────────────
 
-export async function action({ request }: ActionFunctionArgs) {
+async function webSearchAction({ request }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
@@ -420,3 +421,8 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 }
+
+export const action = withSecurity(webSearchAction, {
+  allowedMethods: ['POST'],
+  rateLimit: true,
+});

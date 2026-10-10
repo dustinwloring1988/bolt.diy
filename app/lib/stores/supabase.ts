@@ -144,26 +144,49 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
 }
 
 export async function initializeSupabaseConnection() {
-  if (supabaseConnection.get().user) {
-    return;
+  const currentConnection = supabaseConnection.get();
+
+  try {
+    const response = await fetch('/api/supabase-user');
+
+    if (response.ok) {
+      const data = (await response.json()) as { user: SupabaseUser | null; projects: SupabaseProject[] };
+
+      if (data.user) {
+        updateSupabaseConnection({
+          user: data.user,
+          token: '',
+          isConnected: true,
+          stats: { projects: data.projects, totalProjects: data.projects.length },
+        });
+        return;
+      }
+    } else if (currentConnection.token) {
+      await fetchSupabaseStats(currentConnection.token);
+      return;
+    }
+  } catch (error) {
+    if (currentConnection.token) {
+      try {
+        await fetchSupabaseStats(currentConnection.token);
+        return;
+      } catch {
+        // Clear the persisted connection below when its credentials are stale.
+      }
+    }
+
+    console.error('Failed to revalidate Supabase connection:', error);
   }
 
-  const response = await fetch('/api/supabase-user');
-
-  if (!response.ok) {
-    return;
-  }
-
-  const data = (await response.json()) as { user: SupabaseUser | null; projects: SupabaseProject[] };
-
-  if (data.user) {
-    updateSupabaseConnection({
-      user: data.user,
-      token: '',
-      isConnected: true,
-      stats: { projects: data.projects, totalProjects: data.projects.length },
-    });
-  }
+  updateSupabaseConnection({
+    user: null,
+    token: '',
+    stats: undefined,
+    selectedProjectId: '',
+    isConnected: false,
+    project: undefined,
+    credentials: undefined,
+  });
 }
 
 export async function fetchSupabaseStats(token: string) {
