@@ -1,14 +1,16 @@
 /**
  * WebContainer Initialization Optimizer
- * Preload and cache WebContainer API for faster boot times
+ * Bridges the optimizer API to the canonical webcontainer singleton in
+ * app/lib/webcontainer/index.ts so that WebContainer.boot() is only ever
+ * called once per browser tab.
  */
 
 let webContainerBootPromise: Promise<any> | null = null;
 let webContainerInstance: any = null;
 
 /**
- * Start booting WebContainer in the background
- * Call this early (e.g., on app mount) to parallelize the boot
+ * Start booting WebContainer in the background.
+ * Delegates to the canonical singleton promise so we never call boot() twice.
  */
 export function prebootWebContainer(): void {
   if (typeof window === 'undefined') {
@@ -16,15 +18,18 @@ export function prebootWebContainer(): void {
   }
 
   if (webContainerBootPromise) {
-    return; // Already booting
+    return; // Already initialised
   }
 
-  // Start the boot process in the background
-  webContainerBootPromise = import('@webcontainer/api')
-    .then(({ WebContainer: webContainerAPI }) => {
-      console.log('[WEBCONTAINER] API loaded, starting boot...');
-      return webContainerAPI.boot();
-    })
+  /*
+   * Import the canonical singleton promise that was created in
+   * app/lib/webcontainer/index.ts.  That module calls WebContainer.boot()
+   * exactly once (guarded by import.meta.hot HMR caching), so piggybacking
+   * on it avoids the "Only a single WebContainer instance can be booted"
+   * error that fires when this optimizer tried to call boot() a second time.
+   */
+  webContainerBootPromise = import('~/lib/webcontainer')
+    .then(({ retryWebContainerBoot }) => retryWebContainerBoot())
     .then((instance) => {
       console.log('[WEBCONTAINER] Booted successfully');
       webContainerInstance = instance;
@@ -33,8 +38,6 @@ export function prebootWebContainer(): void {
     })
     .catch((error) => {
       console.error('[WEBCONTAINER] Boot failed:', error);
-
-      // Reset so it can be retried
       webContainerBootPromise = null;
       throw error;
     });

@@ -13,6 +13,8 @@ import {
   autoSelectStarterTemplate,
   enableContextOptimizationStore,
   tabConfigurationStore,
+  webSearchEnabledStore,
+  webSearchProviderStore,
   resetTabConfiguration as resetTabConfig,
   updateProviderSettings as updateProviderSettingsStore,
   updateLatestBranch,
@@ -20,6 +22,9 @@ import {
   updateContextOptimization,
   updateEventLogs,
   updatePromptId,
+  updateWebSearchEnabled,
+  updateWebSearchProvider,
+  type WebSearchProvider,
 } from '~/lib/stores/settings';
 import type { IProviderSetting, ProviderInfo, IProviderConfig } from '~/types/model';
 
@@ -58,6 +63,10 @@ export interface UseSettingsReturn {
   setAutoSelectTemplate: (enabled: boolean) => void;
   contextOptimizationEnabled: boolean;
   enableContextOptimization: (enabled: boolean) => void;
+  webSearchEnabled: boolean;
+  setWebSearchEnabled: (enabled: boolean) => void;
+  webSearchProvider: WebSearchProvider;
+  setWebSearchProvider: (provider: WebSearchProvider) => void;
 
   // Tab configuration
   tabConfiguration: TabWindowConfig;
@@ -79,6 +88,8 @@ export function useSettings(): UseSettingsReturn {
   const [activeProviders, setActiveProviders] = useState<ProviderInfo[]>([]);
   const contextOptimizationEnabled = useStore(enableContextOptimizationStore);
   const tabConfiguration = useStore(tabConfigurationStore);
+  const webSearchEnabled = useStore(webSearchEnabledStore);
+  const webSearchProvider = useStore(webSearchProviderStore);
 
   const [settings, setSettings] = useState<Settings>(() => {
     const storedSettings = getLocalStorage('settings');
@@ -144,6 +155,16 @@ export function useSettings(): UseSettingsReturn {
     logStore.logSystem(`Context optimization ${enabled ? 'enabled' : 'disabled'}`);
   }, []);
 
+  const setWebSearchEnabled = useCallback((enabled: boolean) => {
+    updateWebSearchEnabled(enabled);
+    logStore.logSystem(`Web search ${enabled ? 'enabled' : 'disabled'}`);
+  }, []);
+
+  const setWebSearchProvider = useCallback((provider: WebSearchProvider) => {
+    updateWebSearchProvider(provider);
+    logStore.logSystem(`Web search provider changed to ${provider}`);
+  }, []);
+
   const setTheme = useCallback(
     (theme: Settings['theme']) => {
       saveSettings({ theme });
@@ -198,6 +219,10 @@ export function useSettings(): UseSettingsReturn {
     setAutoSelectTemplate,
     contextOptimizationEnabled,
     enableContextOptimization,
+    webSearchEnabled,
+    setWebSearchEnabled,
+    webSearchProvider,
+    setWebSearchProvider,
     setTheme,
     setLanguage,
     setNotifications,

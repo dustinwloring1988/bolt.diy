@@ -82,6 +82,10 @@ if (savedCredentials && !initialState.credentials) {
 
 export const supabaseConnection = atom<SupabaseConnectionState>(initialState);
 
+let connectionRevision = 0;
+let apiKeyRequestRevision = 0;
+let statsRequest: { token: string; revision: number; promise: Promise<void> } | null = null;
+
 export const isConnecting = atom(false);
 export const isFetchingStats = atom(false);
 export const isFetchingApiKeys = atom(false);
@@ -93,13 +97,31 @@ if (initialState.token && !initialState.stats) {
 export function updateSupabaseConnection(connection: Partial<SupabaseConnectionState>) {
   const currentState = supabaseConnection.get();
 
+  const accountChanged = connection.user !== undefined && connection.user?.id !== currentState.user?.id;
+  const tokenChanged = connection.token !== undefined && connection.token !== currentState.token;
+
+  const connectionStatusChanged =
+    connection.isConnected !== undefined && connection.isConnected !== currentState.isConnected;
+
+  if (accountChanged || tokenChanged || connectionStatusChanged) {
+    connectionRevision++;
+    apiKeyRequestRevision++;
+    isFetchingApiKeys.set(false);
+  }
+
   if (connection.user !== undefined || connection.token !== undefined) {
     const newUser = connection.user !== undefined ? connection.user : currentState.user;
     const newToken = connection.token !== undefined ? connection.token : currentState.token;
-    connection.isConnected = !!(newUser && newToken);
+    connection.isConnected = connection.isConnected ?? !!(newUser && newToken);
   }
 
   if (connection.selectedProjectId !== undefined) {
+    if (connection.selectedProjectId !== currentState.selectedProjectId) {
+      apiKeyRequestRevision++;
+      isFetchingApiKeys.set(false);
+      connection.credentials = undefined;
+    }
+
     if (connection.selectedProjectId && currentState.stats?.projects) {
       const selectedProject = currentState.stats.projects.find(
         (project) => project.id === connection.selectedProjectId,
@@ -143,50 +165,158 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
   }
 }
 
-export function initializeSupabaseConnection() {
-  // Auto-connect using environment variable if available
-  const envToken = import.meta.env?.VITE_SUPABASE_ACCESS_TOKEN;
+export async function initializeSupabaseConnection() {
+  const revision = connectionRevision;
+  const currentConnection = supabaseConnection.get();
 
-  if (envToken && !supabaseConnection.get().token) {
-    updateSupabaseConnection({ token: envToken });
-    fetchSupabaseStats(envToken).catch(console.error);
+  if (currentConnection.token) {
+    try {
+      await fetchSupabaseStats(currentConnection.token, revision);
+      return;
+    } catch (error) {
+      const status = (error as Error & { status?: number }).status;
+
+      if (revision !== connectionRevision) {
+        return;
+      }
+
+      if (status !== 401 && status !== 403) {
+        console.error('Could not revalidate the saved Supabase connection:', error);
+        return;
+      }
+
+      updateSupabaseConnection({
+        user: null,
+        token: '',
+        stats: undefined,
+        selectedProjectId: '',
+        isConnected: false,
+        project: undefined,
+        credentials: undefined,
+      });
+
+      return;
+    }
   }
-}
-
-export async function fetchSupabaseStats(token: string) {
-  isFetchingStats.set(true);
 
   try {
-    // Use the internal API route instead of direct Supabase API call
-    const response = await fetch('/api/supabase', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        token,
-      }),
-    });
+    const response = await fetch('/api/supabase-user');
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch projects');
+    if (revision !== connectionRevision) {
+      return;
     }
 
-    const data = (await response.json()) as any;
+    if (response.ok) {
+      const data = (await response.json()) as { user: SupabaseUser | null; projects: SupabaseProject[] };
 
-    updateSupabaseConnection({
-      user: data.user,
-      stats: data.stats,
-    });
+      if (revision !== connectionRevision) {
+        return;
+      }
+
+      const user = data.user ??
+        currentConnection.user ?? {
+          id: 'supabase-account',
+          email: '',
+          role: 'Admin',
+          created_at: '',
+          last_sign_in_at: '',
+        };
+
+      const accountChanged = currentConnection.user?.id && currentConnection.user.id !== user.id;
+      updateSupabaseConnection({
+        user,
+        token: '',
+        isConnected: true,
+        stats: { projects: data.projects, totalProjects: data.projects.length },
+        ...(accountChanged ? { selectedProjectId: '', credentials: undefined } : {}),
+      });
+
+      return;
+    }
+
+    if (response.status !== 401 && response.status !== 403) {
+      console.error(`Could not revalidate server Supabase connection (${response.status})`);
+      return;
+    }
   } catch (error) {
-    console.error('Failed to fetch Supabase stats:', error);
-    throw error;
-  } finally {
-    isFetchingStats.set(false);
+    if (revision !== connectionRevision) {
+      return;
+    }
+
+    console.error('Failed to revalidate Supabase connection:', error);
+
+    return;
   }
+
+  updateSupabaseConnection({
+    user: null,
+    token: '',
+    stats: undefined,
+    selectedProjectId: '',
+    isConnected: false,
+    project: undefined,
+    credentials: undefined,
+  });
+}
+
+export async function fetchSupabaseStats(token: string, expectedRevision?: number) {
+  const revision = expectedRevision ?? connectionRevision;
+
+  if (statsRequest?.token === token && statsRequest.revision === revision) {
+    return statsRequest.promise;
+  }
+
+  isFetchingStats.set(true);
+
+  const request = { token, revision, promise: Promise.resolve() };
+
+  const promise = (async () => {
+    try {
+      // Use the internal API route instead of direct Supabase API call
+      const response = await fetch('/api/supabase', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = new Error(`Failed to fetch projects (${response.status})`) as Error & { status: number };
+        error.status = response.status;
+        throw error;
+      }
+
+      const data = (await response.json()) as any;
+
+      if (revision !== connectionRevision) {
+        return;
+      }
+
+      updateSupabaseConnection({
+        user: data.user,
+        stats: data.stats,
+      });
+    } catch (error) {
+      console.error('Failed to fetch Supabase stats:', error);
+      throw error;
+    } finally {
+      if (statsRequest === request) {
+        statsRequest = null;
+        isFetchingStats.set(false);
+      }
+    }
+  })();
+  request.promise = promise;
+  statsRequest = request;
+
+  return promise;
 }
 
 export async function fetchProjectApiKeys(projectId: string, token: string) {
+  const requestRevision = ++apiKeyRequestRevision;
   isFetchingApiKeys.set(true);
 
   try {
@@ -210,6 +340,10 @@ export async function fetchProjectApiKeys(projectId: string, token: string) {
 
     const anonKey = apiKeys.find((key: SupabaseApiKey) => key.name === 'anon' || key.name === 'public');
 
+    if (requestRevision !== apiKeyRequestRevision) {
+      return null;
+    }
+
     if (anonKey) {
       const supabaseUrl = `https://${projectId}.supabase.co`;
 
@@ -228,6 +362,8 @@ export async function fetchProjectApiKeys(projectId: string, token: string) {
     console.error('Failed to fetch project API keys:', error);
     throw error;
   } finally {
-    isFetchingApiKeys.set(false);
+    if (requestRevision === apiKeyRequestRevision) {
+      isFetchingApiKeys.set(false);
+    }
   }
 }

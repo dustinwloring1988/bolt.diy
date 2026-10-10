@@ -214,7 +214,9 @@ export default function SupabaseTab() {
         await fetchSupabaseStats(connection.token);
       }
     };
-    fetchProjects();
+    void fetchProjects().catch((error) => {
+      console.error('Failed to load Supabase projects:', error);
+    });
   }, [connection.user, connection.token]);
 
   const handleConnect = async () => {
@@ -703,11 +705,8 @@ export default function SupabaseTab() {
               <div className="text-xs text-bolt-elements-textSecondary bg-bolt-elements-background-depth-1 dark:bg-bolt-elements-background-depth-1 p-3 rounded-lg mb-4">
                 <p className="flex items-center gap-1 mb-1">
                   <span className="i-ph:lightbulb w-3.5 h-3.5 text-bolt-elements-icon-success dark:text-bolt-elements-icon-success" />
-                  <span className="font-medium">Tip:</span> You can also set the{' '}
-                  <code className="px-1 py-0.5 bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-2 rounded">
-                    VITE_SUPABASE_ACCESS_TOKEN
-                  </code>{' '}
-                  environment variable to connect automatically.
+                  <span className="font-medium">Tip:</span> Use a personal access token to connect your own Supabase
+                  account. Deployment-wide management tokens are not supported by this client-facing API.
                 </p>
               </div>
 
@@ -797,7 +796,9 @@ export default function SupabaseTab() {
                       <h4 className="text-sm font-medium text-bolt-elements-textPrimary">{connection.user.email}</h4>
                       <p className="text-sm text-bolt-elements-textSecondary">
                         {connection.user.role} • Member since{' '}
-                        {new Date(connection.user.created_at).toLocaleDateString()}
+                        {connection.user.created_at
+                          ? new Date(connection.user.created_at).toLocaleDateString()
+                          : 'unknown'}
                       </p>
                       <div className="flex items-center gap-4 mt-2 text-xs text-bolt-elements-textSecondary">
                         <span className="flex items-center gap-1">

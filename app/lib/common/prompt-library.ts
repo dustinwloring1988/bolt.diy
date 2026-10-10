@@ -72,12 +72,7 @@ export class PromptLibrary {
     });
   }
   static getPropmtFromLibrary(promptId: string, options: PromptOptions) {
-    const prompt = this.library[promptId];
-
-    if (!prompt) {
-      throw 'Prompt Now Found';
-    }
-
-    return this.library[promptId]?.get(options);
+    const prompt = Object.hasOwn(this.library, promptId) ? this.library[promptId] : this.library.default;
+    return prompt.get(options);
   }
 }

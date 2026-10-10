@@ -42,7 +42,7 @@ export function GitUrlImport() {
   const { ready: historyReady, importChat } = useChatHistory();
   const { ready: gitReady, gitClone } = useGit();
   const [imported, setImported] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // start false — only show overlay once we have a URL and start cloning
 
   const importRepo = async (repoUrl?: string) => {
     if (!gitReady && !historyReady) {
@@ -103,6 +103,7 @@ ${escapeBoltTags(file.content)}
           }
 
           await importChat(`Git Project:${repoUrl.split('/').slice(-1)[0]}`, messages, { gitUrl: repoUrl });
+          setLoading(false);
         }
       } catch (error) {
         console.error('Error during import:', error);
@@ -127,6 +128,7 @@ ${escapeBoltTags(file.content)}
       return;
     }
 
+    setLoading(true);
     importRepo(url).catch((error) => {
       console.error('Error importing repo:', error);
       toast.error('Failed to import repository');

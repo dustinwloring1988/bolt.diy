@@ -176,6 +176,28 @@ pnpm vitest bench tests/performance/chat-input.bench.ts
 pnpm vitest bench --reporter=verbose
 ```
 
+### Profile the Running App in Chromium
+
+The automated DOM benchmarks are useful for catching algorithmic changes, but jsdom timing is not a reliable measure of real frame rate. Use the browser profiler for user-facing startup, composer, and main-thread work:
+
+```bash
+pnpm run profile
+```
+
+This starts a local dev server on port `5188` when needed, opens the app in headless Chromium with `?profile=1`, exercises the composer without submitting a prompt, and writes a Chromium DevTools trace plus a JSON summary under `performance-profiles/`. Open the `.trace.json` file in Chrome DevTools **Performance** using **Load profile** to inspect scripting, rendering, layout, long tasks, and user timing. Set `PROFILE_PORT` or `PROFILE_OUTPUT_DIR` to change the port or output folder.
+
+For an interactive session, run `pnpm run dev` and press **Ctrl/Cmd + Shift + P**. The Performance Dashboard reads the same metrics the app records, exports the current session, and can collect live frame-rate data. In production, append `?profile=1` to enable metrics before page load; the shortcut enables collection from that point onward.
+
+The browser profile records React route commits of at least 2 ms, Web Vitals, and main-thread long tasks. Run the same profile before and after a change with the same browser, viewport, and workload. Compare trace stacks and repeated samples rather than relying on one timing sample.
+
+### Initial profiling findings
+
+The first cold development-server capture showed a Google Fonts stylesheet request taking **3,283 ms** and a page `load` event at **3,468 ms**. That stylesheet was removed because the app can use its system font stack without waiting on a third-party request; the static composer now also declares the system fallbacks explicitly. Two subsequent captures made no Google Fonts requests and reached `load` at **829 ms** and **787 ms**. These are useful directional readings, not a controlled before/after benchmark: the original run also included a cold Vite startup, so the full difference cannot be attributed to the font change.
+
+The profile also found startup main-thread tasks of **62–94 ms** across the follow-up runs and React route commits of **7–28 ms**. The summary uses the app's long-task observer when Chromium's buffered `PerformanceObserver` entries are unavailable, so its long-task count reflects the work actually seen during startup. Those startup tasks are a next area to investigate.
+
+The message-rendering benchmark now warms each operation, samples it repeatedly, and reports median timings. It no longer fails based on a single noisy comparison where a larger message set happened to time faster than a smaller one.
+
 ## Key User Journeys to Track
 
 Based on the architecture, these are the critical paths (95% of user activity):

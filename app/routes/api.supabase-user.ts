@@ -1,7 +1,8 @@
+import type { ActionFunctionArgs } from 'react-router';
 import { getApiKeysFromCookie } from '~/lib/api/cookies';
 import { withSecurity } from '~/lib/security';
 
-async function supabaseUserLoader({ request, context }: { request: Request; context: any }) {
+async function supabaseUserLoader({ request, context }: ActionFunctionArgs) {
   try {
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
@@ -10,7 +11,7 @@ async function supabaseUserLoader({ request, context }: { request: Request; cont
     // Try to get Supabase token from various sources
     const supabaseToken =
       apiKeys.VITE_SUPABASE_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.VITE_SUPABASE_ACCESS_TOKEN ||
+      (context as any)?.cloudflare?.env?.VITE_SUPABASE_ACCESS_TOKEN ||
       process.env.VITE_SUPABASE_ACCESS_TOKEN;
 
     if (!supabaseToken) {
@@ -49,8 +50,18 @@ async function supabaseUserLoader({ request, context }: { request: Request; cont
             id: projects[0].organization_id,
             name: 'Supabase User', // Supabase doesn't provide user name in this endpoint
             email: 'user@supabase.co', // Placeholder
+            role: 'Admin',
+            created_at: '',
+            last_sign_in_at: '',
           }
-        : null;
+        : {
+            id: 'supabase-account',
+            name: 'Supabase User',
+            email: '',
+            role: 'Admin',
+            created_at: '',
+            last_sign_in_at: '',
+          };
 
     return Response.json({
       user,
@@ -80,7 +91,7 @@ export const loader = withSecurity(supabaseUserLoader, {
   allowedMethods: ['GET'],
 });
 
-async function supabaseUserAction({ request, context }: { request: Request; context: any }) {
+async function supabaseUserAction({ request, context }: ActionFunctionArgs) {
   try {
     const formData = await request.formData();
     const action = formData.get('action');
@@ -92,7 +103,7 @@ async function supabaseUserAction({ request, context }: { request: Request; cont
     // Try to get Supabase token from various sources
     const supabaseToken =
       apiKeys.VITE_SUPABASE_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.VITE_SUPABASE_ACCESS_TOKEN ||
+      (context as any)?.cloudflare?.env?.VITE_SUPABASE_ACCESS_TOKEN ||
       process.env.VITE_SUPABASE_ACCESS_TOKEN;
 
     if (!supabaseToken) {
@@ -128,8 +139,18 @@ async function supabaseUserAction({ request, context }: { request: Request; cont
               id: projects[0].organization_id,
               name: 'Supabase User',
               email: 'user@supabase.co',
+              role: 'Admin',
+              created_at: '',
+              last_sign_in_at: '',
             }
-          : null;
+          : {
+              id: 'supabase-account',
+              name: 'Supabase User',
+              email: '',
+              role: 'Admin',
+              created_at: '',
+              last_sign_in_at: '',
+            };
 
       return Response.json({
         user,

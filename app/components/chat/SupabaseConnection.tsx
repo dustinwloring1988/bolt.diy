@@ -70,8 +70,10 @@ export function SupabaseConnection() {
   }, [isConnected, supabaseConn.token]);
 
   useEffect(() => {
-    if (isConnected && supabaseConn.selectedProjectId && supabaseConn.token && !supabaseConn.credentials) {
-      fetchProjectApiKeys(supabaseConn.selectedProjectId).catch(console.error);
+    if (isConnected && supabaseConn.selectedProjectId && !supabaseConn.credentials) {
+      fetchProjectApiKeys(supabaseConn.selectedProjectId).catch((error) => {
+        console.error('Failed to fetch Supabase project API keys:', error);
+      });
     }
   }, [isConnected, supabaseConn.selectedProjectId, supabaseConn.token, supabaseConn.credentials]);
 

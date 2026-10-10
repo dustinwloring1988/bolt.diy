@@ -7,6 +7,8 @@ import {
   type UIMessage,
 } from 'ai';
 import type { ActionFunctionArgs } from 'react-router';
+import { z } from 'zod';
+import { webSearchAction } from './api.web-search';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { createSummary } from '~/lib/.server/llm/create-summary';
 import { getFilePaths, selectContext } from '~/lib/.server/llm/select-context';
@@ -15,8 +17,8 @@ import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
-import { withSecurity } from '~/lib/security';
-import { MCPService } from '~/lib/services/mcpService';
+import { checkRateLimit, withSecurity } from '~/lib/security';
+import { MCPService, type MCPConfig } from '~/lib/services/mcpService';
 import type { ContextAnnotation, ProgressAnnotation } from '~/types/context';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { IProviderSetting } from '~/types/model';
@@ -56,6 +58,14 @@ function toClientErrorMessage(error: unknown): string {
 }
 
 function matchErrorHint(errorMessage: string): string | undefined {
+  if (
+    /tool|function/.test(errorMessage.toLowerCase()) &&
+    /schema|parameter|argument/.test(errorMessage.toLowerCase()) &&
+    /invalid|unsupported|required|strict|additionalproperties|validation/.test(errorMessage.toLowerCase())
+  ) {
+    return 'Custom error: The selected provider rejected a tool schema. Check whether this model supports tool calling and whether its strict-schema requirements match the enabled MCP or web tools.';
+  }
+
   if (errorMessage.includes('model') && errorMessage.includes('not found')) {
     return 'Custom error: Invalid model selected. Please check that the model name is correct and available.';
   }
@@ -94,24 +104,40 @@ export const action = withSecurity(chatAction, {
 });
 
 async function chatAction({ context, request }: ActionFunctionArgs) {
-  const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme, maxLLMSteps } =
-    await request.json<{
-      messages: Messages;
-      files: any;
-      promptId?: string;
-      contextOptimization: boolean;
-      chatMode: 'discuss' | 'build';
-      designScheme?: DesignScheme;
-      supabase?: {
-        isConnected: boolean;
-        hasSelectedProject: boolean;
-        credentials?: {
-          anonKey?: string;
-          supabaseUrl?: string;
-        };
+  const {
+    messages,
+    files,
+    promptId,
+    contextOptimization,
+    supabase,
+    chatMode,
+    designScheme,
+    maxLLMSteps,
+    webSearchEnabled,
+    webSearchProvider,
+    enabledSkills,
+    mcpConfig,
+  } = await request.json<{
+    messages: Messages;
+    files: any;
+    promptId?: string;
+    contextOptimization: boolean;
+    chatMode: 'discuss' | 'build';
+    designScheme?: DesignScheme;
+    supabase?: {
+      isConnected: boolean;
+      hasSelectedProject: boolean;
+      credentials?: {
+        anonKey?: string;
+        supabaseUrl?: string;
       };
-      maxLLMSteps: number;
-    }>();
+    };
+    maxLLMSteps: number;
+    webSearchEnabled?: boolean;
+    webSearchProvider?: 'exa' | 'duckduckgo';
+    enabledSkills?: Array<{ id: string; name: string; content: string }>;
+    mcpConfig?: MCPConfig;
+  }>();
 
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = getApiKeysFromCookie(cookieHeader);
@@ -132,7 +158,13 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
   let progressCounter: number = 1;
 
   try {
-    const mcpService = MCPService.getInstance();
+    const requestMcpService = mcpConfig ? new MCPService() : null;
+    const mcpService = requestMcpService ?? MCPService.getInstance();
+
+    if (requestMcpService) {
+      await requestMcpService.updateConfig(mcpConfig!);
+    }
+
     const totalMessageContent = messages.reduce((acc, message) => acc + getMessageText(message), '');
     logger.debug(`Total message length: ${totalMessageContent.split(' ').length}, words`);
 
@@ -298,7 +330,125 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         }
 
         const mcpTools = mcpService.toolsWithoutExecute;
-        const hasMcpTools = Object.keys(mcpTools).length > 0;
+
+        /*
+         * ── Built-in web tools (web_search + web_browse) ─────────────────────
+         * These are registered as real LLM tool calls when webSearchEnabled is true.
+         * The LLM invokes them autonomously; execution delegates to /api/web-search.
+         */
+        const clientAddress =
+          request.headers.get('cf-connecting-ip') ||
+          request.headers.get('x-real-ip') ||
+          request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+        const webSearchRequestHeaders = {
+          'Content-Type': 'application/json',
+          ...(clientAddress ? { 'x-forwarded-for': clientAddress } : {}),
+        };
+        const runWebSearch = async (body: Record<string, unknown>, timeoutMs: number) => {
+          const rateLimit = checkRateLimit(request, '/api/web-search');
+
+          if (!rateLimit.allowed) {
+            return Response.json({ error: 'Rate limit exceeded' }, { status: 429 });
+          }
+
+          const searchRequest = new Request(new URL('/api/web-search', request.url), {
+            method: 'POST',
+            headers: webSearchRequestHeaders,
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+
+          return webSearchAction({
+            request: searchRequest,
+            context,
+            params: {},
+            url: new URL(searchRequest.url),
+            pattern: '/api/web-search',
+          });
+        };
+
+        const webTools = webSearchEnabled
+          ? {
+              web_search: {
+                description:
+                  'Search the web using Exa (neural search, free) or DuckDuckGo (keyword search). Use this when the user prompt asks for current information, research, sources, or facts that may have changed. Returns up to 10 results with title, URL, and snippet. Browse relevant result pages with web_browse when their contents are needed to answer.',
+                inputSchema: z.object({
+                  query: z.string().describe('The search query'),
+                  numResults: z.number().min(1).max(20).optional().describe('Number of results (default: 8)'),
+                }),
+                execute: async ({ query, numResults }: { query: string; numResults?: number }) => {
+                  try {
+                    const res = await runWebSearch({ query, provider: webSearchProvider || 'exa', numResults }, 25_000);
+
+                    if (!res.ok) {
+                      const err = (await res.json().catch(() => ({ error: 'Unknown error' }))) as { error?: string };
+                      return { error: (err as any).error || `Search failed with status ${res.status}` };
+                    }
+
+                    const data = (await res.json()) as {
+                      success: boolean;
+                      provider?: string;
+                      data?: { results: unknown[] };
+                    };
+
+                    if (!data.success || !data.data?.results) {
+                      return { error: 'No results returned' };
+                    }
+
+                    return { query, provider: data.provider, results: data.data.results };
+                  } catch (err) {
+                    return { error: err instanceof Error ? err.message : 'Search failed' };
+                  }
+                },
+              },
+              web_browse: {
+                description:
+                  'Fetch and read the text content of a public web page. Returns the page title, description, and up to 8000 characters of readable text. Use this after web_search to read relevant source pages, or when the user provides a URL and asks about its contents.',
+                inputSchema: z.object({
+                  url: z.string().url().describe('The full HTTP/HTTPS URL to fetch and read'),
+                }),
+                execute: async ({ url }: { url: string }) => {
+                  try {
+                    const res = await runWebSearch({ url }, 10_000);
+
+                    if (!res.ok) {
+                      const err = (await res.json().catch(() => ({ error: 'Unknown error' }))) as { error?: string };
+                      return { error: (err as any).error || `Fetch failed with status ${res.status}` };
+                    }
+
+                    const data = (await res.json()) as { success: boolean; data?: unknown };
+
+                    if (!data.success || !data.data) {
+                      return { error: 'No content returned' };
+                    }
+
+                    return data.data;
+                  } catch (err) {
+                    return { error: err instanceof Error ? err.message : 'Fetch failed' };
+                  }
+                },
+              },
+            }
+          : {};
+
+        const registeredWebTools: Record<string, (typeof webTools)[keyof typeof webTools]> = {};
+        const webToolNames = new Set<string>();
+
+        for (const [name, tool] of Object.entries(webTools)) {
+          let registeredName = name;
+
+          while (mcpTools[registeredName] || registeredWebTools[registeredName]) {
+            registeredName = `bolt_${registeredName}`;
+          }
+
+          registeredWebTools[registeredName] = tool;
+          webToolNames.add(registeredName);
+        }
+
+        const allTools = { ...mcpTools, ...registeredWebTools };
+        const hasTools = Object.keys(allTools).length > 0;
+
+        const stepLimit = Math.max(maxLLMSteps ?? 1, hasTools && webSearchEnabled ? 2 : 1);
 
         const options: Omit<StreamingOptions, 'messages'> = {
           supabaseConnection: supabase,
@@ -310,22 +460,33 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
            * bolt cannot execute. Bolt's own file edits travel as
            * <boltAction> text tags, so they need no tool registration.
            */
-          ...(hasMcpTools ? { toolChoice: 'auto' as const, tools: mcpTools } : {}),
+          ...(hasTools
+            ? {
+                toolChoice: 'auto' as const,
+                tools: allTools,
+              }
+            : {}),
 
           /*
            * isStepCount(undefined) can never be true, and supplying it replaces
            * v7's own default of isStepCount(1), so the step cap would be dead.
            */
-          stopWhen: isStepCount(maxLLMSteps ?? 1),
+          stopWhen: isStepCount(stepLimit),
           timeout: { chunkMs: 45_000 },
 
           // @ts-ignore - abortSignal not in type definition but supported at runtime
           signal: request.signal,
           telemetry: { functionId: 'bolt-chat' },
           onStepEnd: ({ toolCalls }) => {
-            // add tool call annotations for frontend processing
+            /*
+             * add tool call annotations for frontend processing
+             * Web tools (web_search, web_browse) have execute() and run automatically;
+             * only route MCP tools through mcpService for the approval/execution round-trip.
+             */
             toolCalls.forEach((toolCall) => {
-              mcpService.processToolCall(toolCall, writer);
+              if (!webToolNames.has(toolCall.toolName || '')) {
+                mcpService.processToolCall(toolCall, writer);
+              }
             });
           },
           onEnd: async ({ text: content, finishReason, usage }) => {
@@ -396,6 +557,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               designScheme,
               summary,
               messageSliceId,
+              enabledSkills,
 
               /*
                * Without this the continuation segment produces no activity, so a
@@ -442,6 +604,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           designScheme,
           summary,
           messageSliceId,
+          enabledSkills,
           onChunk: observeChunk,
         });
 
@@ -470,6 +633,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
        */
       onEnd: () => {
         // no-op: stream is managed by merged consumer
+      },
+      onFinish: async () => {
+        await requestMcpService?.close();
       },
       onError: (error: any) => {
         return toClientErrorMessage(error);

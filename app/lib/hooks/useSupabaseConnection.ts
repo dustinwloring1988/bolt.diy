@@ -52,8 +52,8 @@ export function useSupabaseConnection() {
           updateSupabaseConnection(parsed);
         }
 
-        if (parsed.token && parsed.selectedProjectId && !parsed.credentials) {
-          fetchProjectApiKeys(parsed.selectedProjectId, parsed.token).catch(console.error);
+        if (parsed.selectedProjectId && !parsed.credentials && (parsed.token || currentState.isConnected)) {
+          fetchProjectApiKeys(parsed.selectedProjectId, parsed.token || currentState.token).catch(console.error);
         }
       }
     };
@@ -112,7 +112,7 @@ export function useSupabaseConnection() {
     setIsDropdownOpen(false);
   };
 
-  const selectProject = async (projectId: string) => {
+  const selectProject = (projectId: string) => {
     const currentState = supabaseConnection.get();
 
     let projectData = undefined;
@@ -126,17 +126,7 @@ export function useSupabaseConnection() {
       project: projectData,
     });
 
-    if (projectId && currentState.token) {
-      try {
-        await fetchProjectApiKeys(projectId, currentState.token);
-        toast.success('Project selected successfully');
-      } catch (error) {
-        console.error('Failed to fetch API keys:', error);
-        toast.error('Selected project but failed to fetch API keys');
-      }
-    } else {
-      toast.success('Project selected successfully');
-    }
+    toast.success('Project selected successfully');
 
     setIsDropdownOpen(false);
   };
@@ -159,10 +149,10 @@ export function useSupabaseConnection() {
     selectProject,
     handleCreateProject,
     updateToken: (token: string) => updateSupabaseConnection({ ...connection, token }),
-    isConnected: !!(connection.user && connection.token),
+    isConnected: !!(connection.user && (connection.token || connection.isConnected)),
     fetchProjectApiKeys: (projectId: string) => {
-      if (connection.token) {
-        return fetchProjectApiKeys(projectId, connection.token);
+      if (connection.token || connection.isConnected) {
+        return fetchProjectApiKeys(projectId, connection.token || '');
       }
 
       return Promise.reject(new Error('No token available'));

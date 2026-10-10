@@ -11,6 +11,7 @@ import { createFilesContext, extractPropertiesFromMessage } from './utils';
 import { PromptLibrary } from '~/lib/common/prompt-library';
 import { discussPrompt } from '~/lib/common/prompts/discuss-prompt';
 import { getSystemPrompt } from '~/lib/common/prompts/prompts';
+import { AVAILABLE_SKILLS } from '~/lib/common/skills';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
 import type { DesignScheme } from '~/types/design-scheme';
@@ -93,6 +94,7 @@ export async function streamText(props: {
   messageSliceId?: number;
   chatMode?: 'discuss' | 'build';
   designScheme?: DesignScheme;
+  enabledSkills?: Array<{ id: string; name: string; content: string }>;
 
   /*
    * v7 returns a single stream. Callers that used to iterate result.fullStream
@@ -114,6 +116,7 @@ export async function streamText(props: {
     summary,
     chatMode,
     designScheme,
+    enabledSkills,
     onChunk,
   } = props;
 
@@ -209,21 +212,46 @@ export async function streamText(props: {
   );
 
   let systemPrompt =
-    PromptLibrary.getPropmtFromLibrary(promptId || 'default', {
-      cwd: WORK_DIR,
-      allowedHtmlElements: allowedHTMLElements,
-      modificationTagName: MODIFICATIONS_TAG_NAME,
-      designScheme,
-      supabase: {
-        isConnected: options?.supabaseConnection?.isConnected || false,
-        hasSelectedProject: options?.supabaseConnection?.hasSelectedProject || false,
-        credentials: options?.supabaseConnection?.credentials || undefined,
-      },
-    }) ?? getSystemPrompt();
+    chatMode === 'build'
+      ? (PromptLibrary.getPropmtFromLibrary(
+          PromptLibrary.getList().some((prompt) => prompt.id === promptId) ? promptId! : 'default',
+          {
+            cwd: WORK_DIR,
+            allowedHtmlElements: allowedHTMLElements,
+            modificationTagName: MODIFICATIONS_TAG_NAME,
+            designScheme,
+            supabase: {
+              isConnected: options?.supabaseConnection?.isConnected || false,
+              hasSelectedProject: options?.supabaseConnection?.hasSelectedProject || false,
+              credentials: options?.supabaseConnection?.credentials || undefined,
+            },
+          },
+        ) ?? getSystemPrompt())
+      : discussPrompt();
 
   // Inject workstyle commentary guidance for build mode
   if (chatMode === 'build') {
     systemPrompt = withDevelopmentCommentaryWorkstyle(systemPrompt);
+  }
+
+  // Inject enabled skills into system prompt
+  if (enabledSkills && enabledSkills.length > 0) {
+    const skillsContent = enabledSkills
+      .map(({ id }) => AVAILABLE_SKILLS.find((skill) => skill.id === id))
+      .filter((skill): skill is (typeof AVAILABLE_SKILLS)[number] => Boolean(skill))
+      .map((skill) => `<skill name="${skill.name}">\n${skill.content}\n</skill>`)
+      .join('\n\n');
+
+    if (skillsContent) {
+      systemPrompt = `${systemPrompt}
+
+<enabled_skills>
+The following skills have been enabled by the user. Follow their guidance when relevant to the current task:
+
+${skillsContent}
+</enabled_skills>
+`;
+    }
   }
 
   if (chatMode === 'build' && contextFiles && contextOptimization) {
@@ -347,7 +375,7 @@ export async function streamText(props: {
       apiKeys,
       providerSettings,
     }),
-    system: chatMode === 'build' ? systemPrompt : discussPrompt(),
+    system: systemPrompt,
     ...tokenParams,
     messages: await convertToModelMessages(processedMessages as any),
     ...forwardedOptions,

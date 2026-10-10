@@ -1,13 +1,21 @@
-import type { ActionFunction } from 'react-router';
+import type { ActionFunctionArgs } from 'react-router';
+import { getApiKeysFromCookie } from '~/lib/api/cookies';
+import { withSecurity } from '~/lib/security';
 import type { SupabaseProject } from '~/types/supabase';
 
-export const action: ActionFunction = async ({ request }) => {
+async function supabaseAction({ request }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
   try {
-    const { token } = (await request.json()) as any;
+    const body = (await request.json()) as { token?: string };
+    const cookieToken = getApiKeysFromCookie(request.headers.get('Cookie')).VITE_SUPABASE_ACCESS_TOKEN;
+    const token = body.token || cookieToken;
+
+    if (!token) {
+      return Response.json({ error: 'A Supabase personal access token is required' }, { status: 401 });
+    }
 
     const projectsResponse = await fetch('https://api.supabase.com/v1/projects', {
       headers: {
@@ -20,7 +28,10 @@ export const action: ActionFunction = async ({ request }) => {
       const errorText = await projectsResponse.text();
       console.error('Projects fetch failed:', errorText);
 
-      return Response.json({ error: 'Failed to fetch projects' }, { status: 401 });
+      return Response.json(
+        { error: 'Failed to fetch projects' },
+        { status: projectsResponse.status === 401 || projectsResponse.status === 403 ? projectsResponse.status : 502 },
+      );
     }
 
     const projects = (await projectsResponse.json()) as SupabaseProject[];
@@ -46,11 +57,21 @@ export const action: ActionFunction = async ({ request }) => {
     });
   } catch (error) {
     console.error('Supabase API error:', error);
+
+    if (error instanceof SyntaxError) {
+      return Response.json({ error: 'Invalid JSON request body' }, { status: 400 });
+    }
+
     return Response.json(
       {
         error: error instanceof Error ? error.message : 'Authentication failed',
       },
-      { status: 401 },
+      { status: 502 },
     );
   }
-};
+}
+
+export const action = withSecurity(supabaseAction, {
+  allowedMethods: ['POST'],
+  rateLimit: true,
+});

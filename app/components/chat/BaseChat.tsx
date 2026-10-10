@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { UIMessage } from 'ai';
 import Cookies from 'js-cookie';
-import React, { lazy, Suspense, type RefCallback, useEffect, useState } from 'react';
+import React, { lazy, Suspense, type RefCallback, useEffect, useRef, useState } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
 import { getApiKeysFromCookies } from './APIKeyManager';
 import styles from './BaseChat.module.scss';
@@ -33,6 +33,22 @@ import { classNames } from '~/utils/classNames';
 import { PROVIDER_LIST } from '~/utils/constants';
 
 const TEXTAREA_MIN_HEIGHT = 76;
+
+async function fetchModelList(): Promise<ModelInfo[]> {
+  const response = await fetch('/api/models');
+
+  if (!response.ok) {
+    throw new Error(`Model request failed (${response.status})`);
+  }
+
+  const data = (await response.json()) as { modelList?: unknown };
+
+  if (!Array.isArray(data.modelList)) {
+    throw new Error('Model response did not include a model list');
+  }
+
+  return data.modelList as ModelInfo[];
+}
 
 interface BaseChatProps {
   textareaRef?: React.RefObject<HTMLTextAreaElement | null> | undefined;
@@ -77,7 +93,8 @@ interface BaseChatProps {
   selectedElement?: ElementInfo | null;
   setSelectedElement?: (element: ElementInfo | null) => void;
   addToolOutput?: (options: { tool: string; toolCallId: string; output: unknown }) => void;
-  onWebSearchResult?: (result: string) => void;
+  webSearchEnabled?: boolean;
+  setWebSearchEnabled?: (enabled: boolean) => void;
 }
 
 export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
@@ -125,7 +142,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       addToolOutput = () => {
         throw new Error('addToolOutput not implemented');
       },
-      onWebSearchResult,
+      webSearchEnabled = false,
+      setWebSearchEnabled = () => undefined,
     },
     ref,
   ) => {
@@ -136,7 +154,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [isListening, setIsListening] = useState(false);
     const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
     const [transcript, setTranscript] = useState('');
-    const [isModelLoading, setIsModelLoading] = useState<string | undefined>('all');
+    const [isModelLoading, setIsModelLoading] = useState<'all' | string[] | undefined>('all');
+    const apiKeyFetchSequence = useRef(new Map<string, number>());
+    const allProviderFetchSequence = useRef(0);
+    const apiKeyFetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
     const expoUrl = useStore(expoUrlAtom);
     const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -199,45 +220,130 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
           Cookies.remove('apiKeys');
         }
 
+        const sequence = ++allProviderFetchSequence.current;
+        const keySequenceSnapshot = new Map(apiKeyFetchSequence.current);
         setIsModelLoading('all');
-        fetch('/api/models')
-          .then((response) => response.json())
-          .then((data) => {
-            const typedData = data as { modelList: ModelInfo[] };
-            setModelList(typedData.modelList);
+
+        fetchModelList()
+          .then((modelList) => {
+            if (sequence !== allProviderFetchSequence.current) {
+              return;
+            }
+
+            const refreshedProviders = new Set(
+              [...apiKeyFetchSequence.current]
+                .filter(([name, current]) => current !== keySequenceSnapshot.get(name))
+                .map(([name]) => name),
+            );
+            setModelList((currentModels) => [
+              ...modelList.filter((model) => !refreshedProviders.has(model.provider)),
+              ...currentModels.filter((model) => refreshedProviders.has(model.provider)),
+            ]);
           })
           .catch((error) => {
             console.error('Error fetching model list:', error);
           })
           .finally(() => {
-            setIsModelLoading(undefined);
+            if (sequence === allProviderFetchSequence.current) {
+              setIsModelLoading(undefined);
+            }
           });
       }
     }, [providerList, provider]);
 
-    const onApiKeysChange = async (providerName: string, apiKey: string) => {
-      const newApiKeys = { ...apiKeys, [providerName]: apiKey };
+    useEffect(() => {
+      const syncApiKeys = () => {
+        const updatedKeys = getApiKeysFromCookies();
+        setApiKeys(updatedKeys);
+
+        const sequence = ++allProviderFetchSequence.current;
+        const keySequenceSnapshot = new Map(apiKeyFetchSequence.current);
+        setIsModelLoading('all');
+        fetchModelList()
+          .then((modelList) => {
+            if (sequence === allProviderFetchSequence.current) {
+              const refreshedProviders = new Set(
+                [...apiKeyFetchSequence.current]
+                  .filter(([name, current]) => current !== keySequenceSnapshot.get(name))
+                  .map(([name]) => name),
+              );
+              setModelList((currentModels) => [
+                ...modelList.filter((model) => !refreshedProviders.has(model.provider)),
+                ...currentModels.filter((model) => refreshedProviders.has(model.provider)),
+              ]);
+            }
+          })
+          .catch((error) => console.error('Error refreshing models after API key update:', error))
+          .finally(() => {
+            if (sequence === allProviderFetchSequence.current) {
+              setIsModelLoading(undefined);
+            }
+          });
+      };
+
+      window.addEventListener('apiKeysUpdated', syncApiKeys);
+
+      return () => window.removeEventListener('apiKeysUpdated', syncApiKeys);
+    }, []);
+
+    const onApiKeysChange = (providerName: string, apiKey: string) => {
+      const sequence = (apiKeyFetchSequence.current.get(providerName) ?? 0) + 1;
+      apiKeyFetchSequence.current.set(providerName, sequence);
+      setModelList((prevModels) => prevModels.filter((model) => model.provider !== providerName));
+
+      const newApiKeys = { ...getApiKeysFromCookies(), ...apiKeys, [providerName]: apiKey };
       setApiKeys(newApiKeys);
       Cookies.set('apiKeys', JSON.stringify(newApiKeys));
 
-      setIsModelLoading(providerName);
+      setIsModelLoading((current) => (current === 'all' ? current : [...new Set([...(current ?? []), providerName])]));
 
-      let providerModels: ModelInfo[] = [];
+      const pendingFetch = apiKeyFetchTimers.current.get(providerName);
 
-      try {
-        const response = await fetch(`/api/models/${encodeURIComponent(providerName)}`);
-        const data = await response.json();
-        providerModels = (data as { modelList: ModelInfo[] }).modelList;
-      } catch (error) {
-        console.error('Error loading dynamic models for:', providerName, error);
+      if (pendingFetch) {
+        clearTimeout(pendingFetch);
       }
 
-      // Only update models for the specific provider
-      setModelList((prevModels) => {
-        const otherModels = prevModels.filter((model) => model.provider !== providerName);
-        return [...otherModels, ...providerModels];
-      });
-      setIsModelLoading(undefined);
+      apiKeyFetchTimers.current.set(
+        providerName,
+        setTimeout(async () => {
+          let providerModels: ModelInfo[] | undefined;
+
+          try {
+            const response = await fetch(`/api/models/${encodeURIComponent(providerName)}`);
+
+            if (!response.ok) {
+              throw new Error(`Model request failed (${response.status})`);
+            }
+
+            const data = await response.json();
+            const modelList = (data as { modelList?: ModelInfo[] }).modelList;
+
+            if (Array.isArray(modelList)) {
+              providerModels = modelList;
+            } else {
+              throw new Error('Model response did not include a model list');
+            }
+          } catch (error) {
+            console.error('Error loading dynamic models for:', providerName, error);
+          }
+
+          if (apiKeyFetchSequence.current.get(providerName) !== sequence) {
+            return;
+          }
+
+          if (providerModels) {
+            setModelList((prevModels) => {
+              const otherModels = prevModels.filter((model) => model.provider !== providerName);
+              return [...otherModels, ...providerModels];
+            });
+          }
+
+          setIsModelLoading((current) =>
+            current === 'all' ? current : (current ?? []).filter((name) => name !== providerName),
+          );
+          apiKeyFetchTimers.current.delete(providerName);
+        }, 500),
+      );
     };
 
     const startListening = () => {
@@ -442,7 +548,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   setDesignScheme={setDesignScheme}
                   selectedElement={selectedElement}
                   setSelectedElement={setSelectedElement}
-                  onWebSearchResult={onWebSearchResult}
+                  webSearchEnabled={webSearchEnabled}
+                  setWebSearchEnabled={setWebSearchEnabled}
                 />
               </div>
             </StickToBottom>
@@ -463,7 +570,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
 
                     handleSendMessage?.(event, messageInput);
                   })}
-                {!chatStarted && <StarterTemplates />}
+                {!chatStarted && importChat && <StarterTemplates importChat={importChat} />}
               </div>
             </div>
           </div>

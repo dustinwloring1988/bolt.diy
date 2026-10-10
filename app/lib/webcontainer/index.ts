@@ -18,46 +18,89 @@ export let webcontainer: Promise<WebContainer> = new Promise(() => {
   // noop for ssr
 });
 
-if (!import.meta.env.SSR) {
-  webcontainer =
-    import.meta.hot?.data.webcontainer ??
-    Promise.resolve()
-      .then(() => {
-        return WebContainer.boot({
+let bootFailed = false;
+let bootedInstance: WebContainer | undefined = import.meta.hot?.data.webcontainerInstance;
+
+function createWebContainerPromise(): Promise<WebContainer> {
+  return Promise.resolve(bootedInstance)
+    .then(
+      (instance) =>
+        instance ??
+        WebContainer.boot({
           coep: 'credentialless',
           workdirName: WORK_DIR_NAME,
-          forwardPreviewErrors: true, // Enable error forwarding from iframes
-        });
-      })
-      .then(async (webcontainer) => {
-        webcontainerContext.loaded = true;
+          forwardPreviewErrors: true,
+        }),
+    )
+    .then(async (instance) => {
+      bootedInstance = instance;
 
-        const { workbenchStore } = await import('~/lib/stores/workbench');
+      if (import.meta.hot) {
+        import.meta.hot.data.webcontainerInstance = instance;
+      }
 
-        const response = await fetch('/inspector-script.js');
-        const inspectorScript = await response.text();
-        await webcontainer.setPreviewScript(inspectorScript);
+      const { workbenchStore } = await import('~/lib/stores/workbench');
+      const response = await fetch('/inspector-script.js');
+      const inspectorScript = await response.text();
+      await instance.setPreviewScript(inspectorScript);
 
-        // Listen for preview errors
-        webcontainer.on('preview-message', (message) => {
-          console.log('WebContainer preview message:', message);
+      instance.on('preview-message', (message) => {
+        console.log('WebContainer preview message:', message);
 
-          // Handle both uncaught exceptions and unhandled promise rejections
-          if (message.type === 'PREVIEW_UNCAUGHT_EXCEPTION' || message.type === 'PREVIEW_UNHANDLED_REJECTION') {
-            const isPromise = message.type === 'PREVIEW_UNHANDLED_REJECTION';
-            const title = isPromise ? 'Unhandled Promise Rejection' : 'Uncaught Exception';
-            workbenchStore.actionAlert.set({
-              type: 'preview',
-              title,
-              description: 'message' in message ? message.message : 'Unknown error',
-              content: `Error occurred at ${message.pathname}${message.search}${message.hash}\nPort: ${message.port}\n\nStack trace:\n${cleanStackTrace(message.stack || '')}`,
-              source: 'preview',
-            });
-          }
-        });
-
-        return webcontainer;
+        if (message.type === 'PREVIEW_UNCAUGHT_EXCEPTION' || message.type === 'PREVIEW_UNHANDLED_REJECTION') {
+          const isPromise = message.type === 'PREVIEW_UNHANDLED_REJECTION';
+          const title = isPromise ? 'Unhandled Promise Rejection' : 'Uncaught Exception';
+          workbenchStore.actionAlert.set({
+            type: 'preview',
+            title,
+            description: 'message' in message ? message.message : 'Unknown error',
+            content: `Error occurred at ${message.pathname}${message.search}${message.hash}\nPort: ${message.port}\n\nStack trace:\n${cleanStackTrace(message.stack || '')}`,
+            source: 'preview',
+          });
+        }
       });
+
+      webcontainerContext.loaded = true;
+      bootFailed = false;
+
+      return instance;
+    })
+    .catch((error) => {
+      bootFailed = true;
+
+      if (import.meta.hot?.data.webcontainer === webcontainer) {
+        delete import.meta.hot.data.webcontainer;
+      }
+
+      throw error;
+    });
+}
+
+export function retryWebContainerBoot(): Promise<WebContainer> {
+  if (!bootFailed || webcontainerContext.loaded) {
+    return webcontainer;
+  }
+
+  bootFailed = false;
+  webcontainer = createWebContainerPromise();
+
+  if (import.meta.hot) {
+    import.meta.hot.data.webcontainer = webcontainer;
+  }
+
+  return webcontainer;
+}
+
+if (!import.meta.env.SSR) {
+  webcontainer = import.meta.hot?.data.webcontainer ?? createWebContainerPromise();
+
+  void webcontainer.catch(() => {
+    bootFailed = true;
+
+    if (import.meta.hot?.data.webcontainer === webcontainer) {
+      delete import.meta.hot.data.webcontainer;
+    }
+  });
 
   if (import.meta.hot) {
     import.meta.hot.data.webcontainer = webcontainer;

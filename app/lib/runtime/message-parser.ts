@@ -141,9 +141,8 @@ export class StreamingMessageParser {
         }
 
         if (state.insideAction) {
-          const closeIndex = input.indexOf(ARTIFACT_ACTION_TAG_CLOSE, i);
-
           const currentAction = state.currentAction;
+          const closeIndex = input.indexOf(ARTIFACT_ACTION_TAG_CLOSE, i);
 
           if (closeIndex !== -1) {
             currentAction.content += input.slice(i, closeIndex);

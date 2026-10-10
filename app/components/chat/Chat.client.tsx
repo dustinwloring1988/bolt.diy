@@ -15,6 +15,7 @@ import { createMessage, getMessageText, type AnyPart } from '~/lib/persistence/m
 import { chatStore } from '~/lib/stores/chat';
 import { logStore } from '~/lib/stores/logs';
 import { useMCPStore } from '~/lib/stores/mcp';
+import { skillsStore } from '~/lib/stores/skills';
 import { streamingState } from '~/lib/stores/streaming';
 import { supabaseConnection } from '~/lib/stores/supabase';
 import { workbenchStore } from '~/lib/stores/workbench';
@@ -108,7 +109,22 @@ export const ChatImpl = memo(
     );
 
     // const _supabaseAlert = undefined;
-    const { activeProviders, promptId, autoSelectTemplate, contextOptimizationEnabled } = useSettings();
+    const {
+      activeProviders,
+      promptId,
+      autoSelectTemplate,
+      contextOptimizationEnabled,
+      webSearchEnabled,
+      setWebSearchEnabled,
+      webSearchProvider,
+    } = useSettings();
+
+    const skills = useStore(skillsStore);
+
+    const enabledSkills = skills
+      .filter((skill) => skill.enabled)
+      .map(({ id, name, content }) => ({ id, name, content }));
+
     const [llmErrorAlert, setLlmErrorAlert] = useState<LlmErrorAlertType | undefined>(undefined);
 
     const [model, setModel] = useState(() => {
@@ -156,6 +172,10 @@ export const ChatImpl = memo(
         },
       },
       maxLLMSteps: mcpSettings.maxLLMSteps,
+      mcpConfig: mcpSettings.mcpConfig,
+      webSearchEnabled,
+      webSearchProvider,
+      enabledSkills,
     });
 
     bodyRef.current = {
@@ -174,6 +194,10 @@ export const ChatImpl = memo(
         },
       },
       maxLLMSteps: mcpSettings.maxLLMSteps,
+      mcpConfig: mcpSettings.mcpConfig,
+      webSearchEnabled,
+      webSearchProvider,
+      enabledSkills,
     };
 
     const {
@@ -693,16 +717,6 @@ export const ChatImpl = memo(
       Cookies.set('selectedProvider', newProvider.name, { expires: 30 });
     };
 
-    const handleWebSearchResult = useCallback(
-      (result: string) => {
-        const currentInput = input || '';
-        const newInput = currentInput.length > 0 ? `${result}\n\n${currentInput}` : result;
-
-        setInput(newInput);
-      },
-      [input],
-    );
-
     return (
       <BaseChat
         ref={animationScope}
@@ -776,7 +790,8 @@ export const ChatImpl = memo(
         selectedElement={selectedElement}
         setSelectedElement={setSelectedElement}
         addToolOutput={addToolOutput}
-        onWebSearchResult={handleWebSearchResult}
+        webSearchEnabled={webSearchEnabled}
+        setWebSearchEnabled={setWebSearchEnabled}
       />
     );
   },
