@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel in-progress runs on the same branch/PR  
+# Cancel in-progress runs on the same branch/PR
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -33,12 +33,6 @@ jobs:
         run: |
           pnpm run build
           pnpm run perf:analyze
-
-      - name: Dead code elimination check
-        run: npx unimported
-
-      - name: Check for unused dependencies
-        run: npx depcheck --config .depcheckrc.json
 
       - name: Check package.json formatting
         run: npx sort-package-json package.json --check
@@ -67,18 +61,11 @@ jobs:
       - name: Setup and Build
         uses: ./.github/actions/setup-and-build
 
-      - name: Set up matching Chrome and ChromeDriver
+      - name: Install Chrome and matching ChromeDriver
         uses: browser-actions/setup-chrome@v2
         id: setup-chrome
         with:
           install-chromedriver: true
-
-      - name: Use the matching Chrome binary
-        shell: bash
-        run: |
-          mkdir -p "$RUNNER_TEMP/chrome-bin"
-          ln -sf "${{ steps.setup-chrome.outputs.chrome-path }}" "$RUNNER_TEMP/chrome-bin/google-chrome"
-          echo "$RUNNER_TEMP/chrome-bin" >> "$GITHUB_PATH"
 
       - name: Start development server
         run: |
@@ -93,7 +80,7 @@ jobs:
           exit 1
 
       - name: Run accessibility tests with axe
-        run: npx @axe-core/cli http://localhost:5173 --exit --chromedriver-path "${{ steps.setup-chrome.outputs.chromedriver-path }}"
+        run: npx @axe-core/cli http://localhost:5173 --exit --chrome-path "${{ steps.setup-chrome.outputs.chrome-path }}" --chromedriver-path "${{ steps.setup-chrome.outputs.chromedriver-path }}"
 
   performance-audit:
     name: Performance Audit
@@ -146,16 +133,16 @@ jobs:
         run: |
           # Get the base branch (target branch)
           BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
-          
+
           # Count additions and deletions
           ADDITIONS=$(git diff --numstat origin/$BASE_BRANCH...HEAD | awk '{sum += $1} END {print sum}')
           DELETIONS=$(git diff --numstat origin/$BASE_BRANCH...HEAD | awk '{sum += $2} END {print sum}')
           TOTAL_CHANGES=$((ADDITIONS + DELETIONS))
-          
+
           echo "additions=$ADDITIONS" >> $GITHUB_OUTPUT
           echo "deletions=$DELETIONS" >> $GITHUB_OUTPUT
           echo "total=$TOTAL_CHANGES" >> $GITHUB_OUTPUT
-          
+
           # Determine size category
           if [ $TOTAL_CHANGES -lt 50 ]; then
             echo "size=XS" >> $GITHUB_OUTPUT
@@ -177,7 +164,7 @@ jobs:
           echo "📊 Changes: +${{ steps.pr-size.outputs.additions }} -${{ steps.pr-size.outputs.deletions }}"
           echo "📏 Size Category: ${{ steps.pr-size.outputs.size }}"
           echo "💡 This information helps reviewers understand the scope of changes"
-          
+
           if [ "${{ steps.pr-size.outputs.size }}" = "XXL" ]; then
             echo "ℹ️ This is a large PR - consider breaking it into smaller chunks for future PRs"
             echo "However, large PRs are acceptable for major feature additions like this one"

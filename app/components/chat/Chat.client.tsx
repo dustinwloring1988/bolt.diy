@@ -14,7 +14,7 @@ import { description, useChatHistory } from '~/lib/persistence';
 import { createMessage, getMessageText, type AnyPart } from '~/lib/persistence/messageMigration';
 import { chatStore } from '~/lib/stores/chat';
 import { logStore } from '~/lib/stores/logs';
-import { getMCPRequestHeaders, useMCPStore } from '~/lib/stores/mcp';
+import { useMCPStore } from '~/lib/stores/mcp';
 import { skillsStore } from '~/lib/stores/skills';
 import { streamingState } from '~/lib/stores/streaming';
 import { supabaseConnection } from '~/lib/stores/supabase';
@@ -212,7 +212,6 @@ export const ChatImpl = memo(
     } = useChat({
       transport: new DefaultChatTransport({
         api: '/api/chat',
-        headers: getMCPRequestHeaders,
 
         /*
          * body is resolved per request, but only if it is a function. Passing a

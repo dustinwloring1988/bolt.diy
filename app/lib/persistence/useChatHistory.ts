@@ -139,6 +139,13 @@ export function useChatHistory() {
                  * chats.
                  */
                 if (switchedChat) {
+                  /*
+                   * A reset can finish after the route switches away and back.
+                   * Clear ownership before awaiting so the returning load replays
+                   * its snapshot instead of believing the old workbench is intact.
+                   */
+                  loadedChatIdRef.current = undefined;
+                  loadedRouteIdRef.current = undefined;
                   await workbenchStore.resetWorkbench();
 
                   if (!isCurrentLoad()) {

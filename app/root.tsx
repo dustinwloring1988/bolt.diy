@@ -74,7 +74,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
           on the first client render (keeping hydration in sync), then swaps in the
           real tree once mounted.
         */}
-        <ClientOnly fallback={<div className="w-full h-full" />}>
+        <ClientOnly
+          fallback={
+            <div
+              className="flex h-full w-full items-center justify-center bg-bolt-elements-background-depth-1"
+              role="status"
+            >
+              Loading Bolt...
+            </div>
+          }
+        >
           {() => <DndProvider backend={HTML5Backend}>{children}</DndProvider>}
         </ClientOnly>
         <ToastContainer

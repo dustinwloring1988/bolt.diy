@@ -19,6 +19,7 @@ interface CachedHighlight {
 
 export class SyntaxHighlighterClient {
   private worker: Worker | null = null;
+  private disposed = false;
   private pendingRequests = new Map<string, PendingRequest>();
   private requestCounter = 0;
   private cache = new Map<string, CachedHighlight>();
@@ -31,6 +32,10 @@ export class SyntaxHighlighterClient {
   }
 
   private initWorker(): void {
+    if (this.disposed) {
+      return;
+    }
+
     try {
       this.worker = new Worker(new URL('../workers/syntax-highlighter.worker.ts', import.meta.url), { type: 'module' });
 
@@ -79,6 +84,10 @@ export class SyntaxHighlighterClient {
     }
 
     // If worker is not available, return plain text
+    if (!this.worker && !this.disposed) {
+      this.initWorker();
+    }
+
     if (!this.worker) {
       return this.fallbackHighlight(code);
     }
@@ -164,6 +173,8 @@ export class SyntaxHighlighterClient {
    * Terminate the worker
    */
   dispose(): void {
+    this.disposed = true;
+
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;

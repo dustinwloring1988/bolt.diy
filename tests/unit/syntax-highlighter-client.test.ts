@@ -1,6 +1,6 @@
 /**
  * Syntax Highlighter Client Unit Tests
- * 
+ *
  * Tests the worker client interface and caching behavior
  */
 
@@ -53,10 +53,10 @@ describe('SyntaxHighlighterClient', () => {
   describe('caching', () => {
     it('should cache highlighted results', async () => {
       const code = 'const x = 1;';
-      
+
       // First call
       const result1 = await client.highlight(code, 'javascript');
-      
+
       // Second call should use cache
       const result2 = await client.highlight(code, 'javascript');
 
@@ -65,7 +65,7 @@ describe('SyntaxHighlighterClient', () => {
 
     it('should use different cache keys for different languages', async () => {
       const code = 'const x = 1;';
-      
+
       const jsResult = await client.highlight(code, 'javascript');
       const tsResult = await client.highlight(code, 'typescript');
 
@@ -119,9 +119,9 @@ describe('SyntaxHighlighterClient', () => {
 
     it('should update size after highlighting', async () => {
       const initialStats = client.getCacheStats();
-      
+
       await client.highlight('const x = 1;', 'javascript');
-      
+
       const afterStats = client.getCacheStats();
       expect(afterStats.size).toBeGreaterThan(initialStats.size);
     });
@@ -130,12 +130,12 @@ describe('SyntaxHighlighterClient', () => {
   describe('clearCache', () => {
     it('should clear the cache', async () => {
       await client.highlight('const x = 1;', 'javascript');
-      
+
       const beforeStats = client.getCacheStats();
       expect(beforeStats.size).toBeGreaterThan(0);
-      
+
       client.clearCache();
-      
+
       const afterStats = client.getCacheStats();
       expect(afterStats.size).toBe(0);
       expect(afterStats.bytes).toBe(0);
@@ -145,9 +145,9 @@ describe('SyntaxHighlighterClient', () => {
   describe('dispose', () => {
     it('should clean up resources', () => {
       const testClient = new SyntaxHighlighterClient();
-      
+
       expect(() => testClient.dispose()).not.toThrow();
-      
+
       // After dispose, should not have active worker
       const stats = testClient.getCacheStats();
       expect(stats.size).toBe(0);
@@ -157,14 +157,14 @@ describe('SyntaxHighlighterClient', () => {
   describe('error handling', () => {
     it('should handle empty code', async () => {
       const result = await client.highlight('', 'javascript');
-      
+
       expect(result).toBeTruthy();
       expect(typeof result).toBe('string');
     });
 
     it('should handle invalid language gracefully', async () => {
       const result = await client.highlight('code', 'invalid-lang' as Parameters<typeof client.highlight>[1]);
-      
+
       // Should return fallback HTML
       expect(result).toContain('<');
     });
@@ -173,11 +173,11 @@ describe('SyntaxHighlighterClient', () => {
       // This would require mocking the worker to delay response
       // For now, just verify the method doesn't hang
       const code = 'const x = 1;'.repeat(1000);
-      
+
       const startTime = Date.now();
       await client.highlight(code, 'javascript');
       const duration = Date.now() - startTime;
-      
+
       // Should complete in reasonable time (< 5 seconds)
       expect(duration).toBeLessThan(5000);
     }, 10000);
@@ -209,5 +209,34 @@ describe('SyntaxHighlighterClient', () => {
       expect(result).not.toContain('<script>alert("xss")</script>');
       expect(result).toContain('&lt;script&gt;');
     });
+  });
+
+  it('recreates a failed worker on the next highlight but stays stopped after dispose', async () => {
+    const workers: Array<{ listeners: Map<string, (event: any) => void>; terminate: ReturnType<typeof vi.fn> }> = [];
+    class RecoverableWorker {
+      listeners = new Map<string, (event: any) => void>();
+      terminate = vi.fn();
+      constructor() {
+        workers.push(this);
+      }
+      addEventListener(type: string, listener: (event: any) => void) {
+        this.listeners.set(type, listener);
+      }
+      postMessage({ id }: { id: string }) {
+        this.listeners.get('message')?.({ data: { id, html: '<pre><code>recovered</code></pre>' } });
+      }
+    }
+
+    vi.stubGlobal('Worker', RecoverableWorker);
+    const recoverableClient = new SyntaxHighlighterClient();
+    workers[0].listeners.get('error')?.(new Error('worker failed'));
+    const result = await recoverableClient.highlight('code', 'javascript');
+    expect(result).toContain('recovered');
+    expect(workers).toHaveLength(2);
+
+    recoverableClient.dispose();
+    await recoverableClient.highlight('other', 'javascript');
+    expect(workers).toHaveLength(2);
+    vi.unstubAllGlobals();
   });
 });

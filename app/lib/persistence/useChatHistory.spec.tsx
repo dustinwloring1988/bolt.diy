@@ -188,6 +188,37 @@ describe('useChatHistory chat switching', () => {
     expect(result.current.initialMessages.some((message) => message.id.startsWith('chat-a'))).toBe(false);
   });
 
+  it('replays the returning chat snapshot when a delayed reset finishes after A to B to A navigation', async () => {
+    const useChatHistory = await importHook();
+    const { rerender, result } = renderHook(() => useChatHistory());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    let finishBReset!: () => void;
+    resetWorkbench.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishBReset = resolve;
+        }),
+    );
+    routeId = 'chat-b';
+    rerender();
+    await waitFor(() => expect(resetWorkbench).toHaveBeenCalledTimes(2));
+
+    snapshots['chat-a'] = {
+      chatIndex: 'snapshot-message',
+      files: { '/home/project/src/returning.ts': { type: 'file', content: 'restored', isBinary: false } },
+    };
+    routeId = 'chat-a';
+    rerender();
+    finishBReset();
+
+    await waitFor(() =>
+      expect(result.current.initialMessages.some((message) => message.id === 'chat-a-assistant')).toBe(true),
+    );
+    expect(resetWorkbench).toHaveBeenCalledTimes(3);
+    expect(writeFile).toHaveBeenCalledWith('/src/returning.ts', 'restored', { encoding: 'utf8' });
+  });
+
   it('waits for snapshot directories and files before exposing loaded messages', async () => {
     const useChatHistory = await importHook();
     const { result, rerender } = renderHook(() => useChatHistory());
