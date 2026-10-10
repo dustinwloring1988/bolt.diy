@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { MCPConfig, MCPServerTools } from '~/lib/services/mcpService';
+import { mcpServerConfigSchema, type MCPConfig, type MCPServerTools } from '~/lib/services/mcpService';
 
 const MCP_SETTINGS_KEY = 'mcp_settings';
 const POSTHOG_SESSION_TOKEN_KEY = 'posthog_mcp_token';
@@ -49,7 +49,18 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
       if (savedConfig) {
         try {
           const parsed = JSON.parse(savedConfig) as Partial<MCPSettings> | null;
+
           const rawServers = parsed?.mcpConfig?.mcpServers;
+
+          const mcpServers =
+            rawServers && typeof rawServers === 'object' && !Array.isArray(rawServers)
+              ? Object.fromEntries(
+                  Object.entries(rawServers).flatMap(([name, server]) => {
+                    const validatedServer = mcpServerConfigSchema.safeParse(server);
+                    return validatedServer.success ? [[name, validatedServer.data]] : [];
+                  }),
+                )
+              : defaultSettings.mcpConfig.mcpServers;
 
           const settings: MCPSettings = {
             maxLLMSteps:
@@ -57,10 +68,7 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
                 ? parsed.maxLLMSteps
                 : defaultSettings.maxLLMSteps,
             mcpConfig: {
-              mcpServers:
-                rawServers && typeof rawServers === 'object' && !Array.isArray(rawServers)
-                  ? rawServers
-                  : defaultSettings.mcpConfig.mcpServers,
+              mcpServers,
             },
           };
 

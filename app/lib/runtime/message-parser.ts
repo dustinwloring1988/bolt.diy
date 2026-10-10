@@ -144,20 +144,19 @@ export class StreamingMessageParser {
           const closeIndex = input.indexOf(ARTIFACT_ACTION_TAG_CLOSE, i);
           const currentAction = state.currentAction;
 
-          const isFileAction = 'type' in currentAction && currentAction.type === 'file';
-          const candidate = this.#findRestartedArtifact(input, i);
+          const isShellAction = 'type' in currentAction && currentAction.type === 'shell';
 
-          const isLineBoundaryRestart =
-            candidate !== -1 && /^[\t ]*$/.test(input.slice(input.lastIndexOf('\n', candidate - 1) + 1, candidate));
+          const restartedArtifactIndex = this.#findRestartedArtifact(input, i, (candidate) => {
+            const isLineBoundary = /^[\t \r]*$/.test(
+              input.slice(input.lastIndexOf('\n', candidate - 1) + 1, candidate),
+            );
 
-          /* Complete nested protocol examples belong to file content; recover only from a line-start restart. */
-          const restartCandidate = isFileAction
-            ? isLineBoundaryRestart && closeIndex === -1
-              ? candidate
-              : -1
-            : candidate;
-          const restartedArtifactIndex =
-            restartCandidate !== -1 && (closeIndex === -1 || restartCandidate < closeIndex) ? restartCandidate : -1;
+            /*
+             * Shell bodies commonly contain protocol-like text in heredocs, so they are never restart boundaries.
+             * File examples remain ambiguous without explicit escaping, so only recover at an actual line boundary.
+             */
+            return !isShellAction && isLineBoundary && (closeIndex === -1 || candidate < closeIndex);
+          });
 
           if (restartedArtifactIndex !== -1) {
             /*
@@ -402,7 +401,7 @@ export class StreamingMessageParser {
     this.#messages.clear();
   }
 
-  #findRestartedArtifact(input: string, from: number): number {
+  #findRestartedArtifact(input: string, from: number, isRestartBoundary: (candidate: number) => boolean): number {
     let candidate = input.indexOf(ARTIFACT_TAG_OPEN, from);
 
     while (candidate !== -1) {
@@ -420,7 +419,8 @@ export class StreamingMessageParser {
         /\btitle="[^"]+"/.test(openingTag) &&
         nextAction !== -1 &&
         nextAction - tagEnd < 2_000 &&
-        (nextArtifact === -1 || nextAction < nextArtifact)
+        (nextArtifact === -1 || nextAction < nextArtifact) &&
+        isRestartBoundary(candidate)
       ) {
         return candidate;
       }
