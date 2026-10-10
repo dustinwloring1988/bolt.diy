@@ -9,8 +9,8 @@
  */
 
 import { spawn } from 'node:child_process';
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import electronPath from 'electron';
 
@@ -66,6 +66,7 @@ async function waitForServer(port, serverName) {
     try {
       await fetch(endpoint, { signal: AbortSignal.timeout(CHECK_INTERVAL) });
       console.log(`✅ ${serverName} started`);
+
       return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, CHECK_INTERVAL));

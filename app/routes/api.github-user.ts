@@ -1,20 +1,14 @@
 import { getApiKeysFromCookie } from '~/lib/api/cookies';
 import { withSecurity } from '~/lib/security';
 
-async function githubUserLoader({ request, context }: { request: Request; context: any }) {
+async function githubUserLoader({ request }: { request: Request }) {
   try {
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
     const apiKeys = getApiKeysFromCookie(cookieHeader);
 
-    // Try to get GitHub token from various sources
-    const githubToken =
-      apiKeys.GITHUB_API_KEY ||
-      apiKeys.VITE_GITHUB_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.GITHUB_TOKEN ||
-      context?.cloudflare?.env?.VITE_GITHUB_ACCESS_TOKEN ||
-      process.env.GITHUB_TOKEN ||
-      process.env.VITE_GITHUB_ACCESS_TOKEN;
+    // User account operations must use the requesting browser's credentials.
+    const githubToken = apiKeys.GITHUB_API_KEY || apiKeys.VITE_GITHUB_ACCESS_TOKEN;
 
     if (!githubToken) {
       return Response.json({ error: 'GitHub token not found' }, { status: 401 });
@@ -69,7 +63,7 @@ export const loader = withSecurity(githubUserLoader, {
   allowedMethods: ['GET'],
 });
 
-async function githubUserAction({ request, context }: { request: Request; context: any }) {
+async function githubUserAction({ request }: { request: Request }) {
   try {
     let action: string | null = null;
     let repoFullName: string | null = null;
@@ -97,14 +91,7 @@ async function githubUserAction({ request, context }: { request: Request; contex
     const cookieHeader = request.headers.get('Cookie');
     const apiKeys = getApiKeysFromCookie(cookieHeader);
 
-    // Try to get GitHub token from various sources
-    const githubToken =
-      apiKeys.GITHUB_API_KEY ||
-      apiKeys.VITE_GITHUB_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.GITHUB_TOKEN ||
-      context?.cloudflare?.env?.VITE_GITHUB_ACCESS_TOKEN ||
-      process.env.GITHUB_TOKEN ||
-      process.env.VITE_GITHUB_ACCESS_TOKEN;
+    const githubToken = apiKeys.GITHUB_API_KEY || apiKeys.VITE_GITHUB_ACCESS_TOKEN;
 
     if (!githubToken) {
       return Response.json({ error: 'GitHub token not found' }, { status: 401 });
@@ -196,9 +183,7 @@ async function githubUserAction({ request, context }: { request: Request; contex
 
     if (action === 'get_token') {
       // Return the GitHub token for git authentication
-      return Response.json({
-        token: githubToken,
-      });
+      return Response.json({ token: githubToken }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     if (action === 'search_repos') {

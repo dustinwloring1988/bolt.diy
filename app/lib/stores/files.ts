@@ -51,6 +51,12 @@ type Dirent = File | Folder;
 
 export type FileMap = Record<string, Dirent | undefined>;
 
+export function getDirectoryEntryPaths(files: FileMap, directoryPath: string): string[] {
+  const prefix = `${directoryPath}/`;
+
+  return Object.keys(files).filter((filePath) => filePath === directoryPath || filePath.startsWith(prefix));
+}
+
 export class FilesStore {
   #webcontainer: Promise<WebContainer>;
 
@@ -64,17 +70,17 @@ export class FilesStore {
    * Needs to be reset when the user sends another message and all changes have to be submitted
    * for the model to be aware of the changes.
    */
-  #modifiedFiles: Map<string, string> = import.meta.hot?.data.modifiedFiles ?? new Map();
+  #modifiedFiles: Map<string, string> = import.meta.hot?.data?.modifiedFiles ?? new Map();
 
   /**
    * Keeps track of deleted files and folders to prevent them from reappearing on reload
    */
-  #deletedPaths: Set<string> = import.meta.hot?.data.deletedPaths ?? new Set();
+  #deletedPaths: Set<string> = import.meta.hot?.data?.deletedPaths ?? new Set();
 
   /**
    * Map of files that matches the state of WebContainer.
    */
-  files: MapStore<FileMap> = import.meta.hot?.data.files ?? map({});
+  files: MapStore<FileMap> = import.meta.hot?.data?.files ?? map({});
 
   get filesCount() {
     return this.#size;
@@ -103,7 +109,7 @@ export class FilesStore {
     // Load locked files from localStorage
     this.#loadLockedFiles();
 
-    if (import.meta.hot) {
+    if (import.meta.hot?.data) {
       // Persist our state across hot reloads
       import.meta.hot.data.files = this.files;
       import.meta.hot.data.modifiedFiles = this.#modifiedFiles;
@@ -740,11 +746,19 @@ export class FilesStore {
           break;
         }
         case 'remove_dir': {
-          this.files.setKey(sanitizedPath, undefined);
+          const currentFiles = this.files.get();
 
-          for (const [direntPath] of Object.entries(this.files)) {
-            if (direntPath.startsWith(sanitizedPath)) {
-              this.files.setKey(direntPath, undefined);
+          /*
+           * MapStore is not the file map itself; enumerate its current value.
+           * Include the path boundary so removing `src/a` preserves `src/abc`.
+           */
+          for (const direntPath of getDirectoryEntryPaths(currentFiles, sanitizedPath)) {
+            const dirent = currentFiles[direntPath];
+            this.files.setKey(direntPath, undefined);
+
+            if (dirent?.type === 'file') {
+              this.#size = Math.max(0, this.#size - 1);
+              this.#modifiedFiles.delete(direntPath);
             }
           }
 
@@ -752,7 +766,7 @@ export class FilesStore {
         }
         case 'add_file':
         case 'change': {
-          if (type === 'add_file') {
+          if (type === 'add_file' && this.files.get()[sanitizedPath]?.type !== 'file') {
             this.#size++;
           }
 
@@ -775,8 +789,12 @@ export class FilesStore {
           break;
         }
         case 'remove_file': {
-          // Clamped: emptying the working directory removes files the map no longer tracks.
-          this.#size = Math.max(0, this.#size - 1);
+          // Directory removal may already have removed this entry.
+          if (this.files.get()[sanitizedPath]?.type === 'file') {
+            this.#size = Math.max(0, this.#size - 1);
+          }
+
+          this.#modifiedFiles.delete(sanitizedPath);
           this.files.setKey(sanitizedPath, undefined);
           break;
         }
@@ -823,6 +841,7 @@ export class FilesStore {
         await webcontainer.fs.writeFile(relativePath, Buffer.from(content));
 
         const base64Content = Buffer.from(content).toString('base64');
+        const shouldCountFile = this.files.get()[filePath]?.type !== 'file';
         this.files.setKey(filePath, {
           type: 'file',
           content: base64Content,
@@ -830,17 +849,26 @@ export class FilesStore {
           isLocked: false,
         });
 
+        if (shouldCountFile) {
+          this.#size++;
+        }
+
         this.#modifiedFiles.set(filePath, base64Content);
       } else {
         const contentToWrite = (content as string).length === 0 ? ' ' : content;
         await webcontainer.fs.writeFile(relativePath, contentToWrite);
 
+        const shouldCountFile = this.files.get()[filePath]?.type !== 'file';
         this.files.setKey(filePath, {
           type: 'file',
           content: content as string,
           isBinary: false,
           isLocked: false,
         });
+
+        if (shouldCountFile) {
+          this.#size++;
+        }
 
         this.#modifiedFiles.set(filePath, content as string);
       }

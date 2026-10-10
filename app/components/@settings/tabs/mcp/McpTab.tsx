@@ -71,13 +71,31 @@ export default function McpTab() {
   const initialize = useMCPStore((state) => state.initialize);
   const updateSettings = useMCPStore((state) => state.updateSettings);
   const checkServersAvailabilities = useMCPStore((state) => state.checkServersAvailabilities);
+  const authenticate = useMCPStore((state) => state.authenticate);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [adminToken, setAdminToken] = useState('');
   const [mcpConfigText, setMCPConfigText] = useState('');
   const [maxLLMSteps, setMaxLLMSteps] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [isCheckingServers, setIsCheckingServers] = useState(false);
   const [expandedServer, setExpandedServer] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+  const handleAdminTokenChange = async (token: string) => {
+    setAdminToken(token);
+    setIsAuthenticating(true);
+
+    try {
+      await authenticate(token);
+      setAdminToken('');
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to authenticate MCP administrator');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
 
   useEffect(() => {
     if (!isInitialized) {
@@ -315,6 +333,31 @@ export default function McpTab() {
         <h2 className="text-base font-medium text-bolt-elements-textPrimary mb-3">Configuration</h2>
 
         <div className="space-y-4">
+          <div>
+            <label htmlFor="mcp-admin-token" className="block text-sm text-bolt-elements-textSecondary mb-2">
+              MCP administrator token
+            </label>
+            <input
+              id="mcp-admin-token"
+              type="password"
+              autoComplete="off"
+              value={adminToken}
+              onChange={(event) => setAdminToken(event.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary"
+            />
+            <button
+              type="button"
+              onClick={() => void handleAdminTokenChange(adminToken)}
+              disabled={isAuthenticating}
+              className="mt-2 px-3 py-1.5 rounded-lg text-sm bg-bolt-elements-background-depth-3 text-bolt-elements-textPrimary disabled:opacity-50"
+            >
+              {isAuthenticating ? 'Connecting…' : adminToken ? 'Connect' : 'Disconnect'}
+            </button>
+            <p className="mt-2 text-sm text-bolt-elements-textSecondary">
+              Enter the token supplied by your server administrator. The server exchanges it for a short-lived, HttpOnly
+              session.
+            </p>
+          </div>
           <div>
             <label htmlFor="mcp-config" className="block text-sm text-bolt-elements-textSecondary mb-2">
               Configuration JSON

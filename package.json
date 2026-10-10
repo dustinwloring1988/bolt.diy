@@ -1,66 +1,62 @@
 {
   "name": "bolt",
-  "description": "An AI Agent",
-  "private": true,
-  "license": "MIT",
-  "sideEffects": false,
-  "type": "module",
   "version": "1.0.0",
+  "private": true,
+  "description": "An AI Agent",
+  "license": "MIT",
   "author": {
     "name": "bolt.diy team",
     "email": "maintainers@bolt.diy"
   },
+  "sideEffects": false,
+  "type": "module",
   "scripts": {
-    "changeset": "changeset",
-    "deploy": "pnpm run build && wrangler deploy",
-    "build": "react-router build",
-    "dev": "node pre-start.cjs  && react-router dev",
-    "test": "vitest --run",
-    "test:watch": "vitest",
-    "test:unit": "vitest --run tests/unit",
-    "test:integration": "vitest --run tests/integration",
-    "test:perf": "vitest --run tests/performance",
-    "test:coverage": "vitest --run --coverage",
-    "profile": "node scripts/profile-app.mjs",
-    "test:e2e": "playwright test --config=playwright.config.e2e.ts",
-    "test:e2e:ui": "playwright test --config=playwright.config.e2e.ts --ui",
-    "test:e2e:headed": "playwright test --config=playwright.config.e2e.ts --headed",
-    "test:e2e:debug": "playwright test --config=playwright.config.e2e.ts --debug",
-    "test:e2e:report": "playwright show-report",
     "benchmarks": "vitest bench",
-    "benchmarks:watch": "vitest bench --watch",
     "benchmarks:render": "node scripts/benchmark-message-rendering.mjs",
-    "perf:test": "vitest --run tests/performance",
-    "perf:analyze": "node scripts/analyze-bundle.js",
-    "perf:check": "node scripts/check-performance-budgets.js",
-    "perf:report": "pnpm run perf:test && pnpm run perf:analyze",
-    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint app",
-    "lint:fix": "npm run lint -- --fix && prettier app --write",
-    "start": "vite preview --port 5173 --strictPort",
-    "dockerstart": "vite preview --host 0.0.0.0 --port 5173 --strictPort",
-    "dockerrun": "docker run -it -d --name bolt-ai-live -p 5173:5173 --env-file .env.local bolt-ai",
-    "dockerbuild:prod": "docker build -t bolt-ai:production -t bolt-ai:latest --target bolt-ai-production .",
-    "dockerbuild": "docker build -t bolt-ai:development -t bolt-ai:latest --target development .",
-    "typecheck": "tsc",
-    "typegen": "wrangler types",
-    "preview": "pnpm run build && pnpm run start",
-    "prepare": "husky",
+    "benchmarks:watch": "vitest bench --watch",
+    "build": "react-router build",
+    "changeset": "changeset",
     "clean": "node scripts/clean.js",
-    "electron:dev": "node scripts/electron-dev.mjs",
-    "electron:dev:inspect": "NODE_ENV=development electron --inspect=9229 build/electron/main/index.mjs",
+    "deploy": "pnpm run build && wrangler deploy",
+    "dev": "node pre-start.cjs  && react-router dev",
+    "dockerbuild": "docker build -t bolt-ai:development -t bolt-ai:latest --target development .",
+    "dockerbuild:prod": "docker build -t bolt-ai:production -t bolt-ai:latest --target bolt-ai-production .",
+    "dockerrun": "docker run -it -d --name bolt-ai-live -p 5173:5173 --env-file .env.local bolt-ai",
+    "dockerstart": "wrangler dev --local --config build/server/wrangler.json --ip 0.0.0.0 --port 5173",
     "electron:build:deps": "concurrently \"pnpm electron:build:main\" \"pnpm electron:build:preload\" --kill-others-on-fail",
+    "electron:build:dist": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --mwl",
+    "electron:build:linux": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --linux",
+    "electron:build:mac": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --mac",
     "electron:build:main": "vite build --config ./electron/main/vite.config.ts",
     "electron:build:preload": "vite build --config ./electron/preload/vite.config.ts",
     "electron:build:renderer": "react-router build --config vite-electron.config.ts",
     "electron:build:unpack": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --dir",
-    "electron:build:mac": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --mac",
     "electron:build:win": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --win",
-    "electron:build:linux": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --linux",
-    "electron:build:dist": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --mwl"
-  },
-  "engines": {
-    "node": ">=22.12.0",
-    "pnpm": ">=9.15.9"
+    "electron:dev": "node scripts/electron-dev.mjs",
+    "electron:dev:inspect": "NODE_ENV=development electron --inspect=9229 build/electron/main/index.mjs",
+    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint --ext .js,.mjs,.cjs,.ts,.tsx app electron scripts workers tests e2e-tests \"*.{ts,js,mjs,cjs}\"",
+    "lint:fix": "npm run lint -- --fix && prettier app --write",
+    "perf:analyze": "node scripts/analyze-bundle.js",
+    "perf:check": "node scripts/check-performance-budgets.js",
+    "perf:report": "pnpm run perf:test && pnpm run perf:analyze",
+    "perf:test": "vitest --run tests/performance",
+    "prepare": "husky",
+    "preview": "pnpm run build && pnpm run start",
+    "profile": "node scripts/profile-app.mjs",
+    "start": "vite preview --port 5173 --strictPort",
+    "test": "vitest --run",
+    "test:coverage": "vitest --run --coverage --exclude \"tests/performance/**\"",
+    "test:e2e": "playwright test --config=playwright.config.e2e.ts",
+    "test:e2e:debug": "playwright test --config=playwright.config.e2e.ts --debug",
+    "test:e2e:headed": "playwright test --config=playwright.config.e2e.ts --headed",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:ui": "playwright test --config=playwright.config.e2e.ts --ui",
+    "test:integration": "vitest --run tests/integration",
+    "test:perf": "vitest --run tests/performance",
+    "test:unit": "vitest --run tests/unit",
+    "test:watch": "vitest",
+    "typecheck": "tsc",
+    "typegen": "wrangler types"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "5.0.106",
@@ -103,7 +99,6 @@
     "@radix-ui/react-label": "^2.1.16",
     "@radix-ui/react-popover": "^1.2.0",
     "@radix-ui/react-scroll-area": "^1.3.0",
-    "@radix-ui/react-separator": "^1.1.16",
     "@radix-ui/react-switch": "^1.3.8",
     "@radix-ui/react-tabs": "^1.1.22",
     "@radix-ui/react-tooltip": "^1.3.0",
@@ -208,7 +203,18 @@
     "vite-plugin-optimize-css-modules": "^1.4.0",
     "vitest": "^5.0.3"
   },
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=9.15.9"
+  },
   "pnpm": {
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "@cloudflare/workers-types": ">=4.0.0",
+        "electron-builder-squirrel-windows": ">=26.0.0"
+      }
+    },
     "overrides": {
       "@typescript-eslint/utils": "^8.0.0-alpha.30",
       "app-builder-lib": "^26.15.3",
@@ -224,13 +230,6 @@
       "tar": "^7.5.21",
       "tar-fs": "^2.1.4",
       "yaml@^2": "^2.8.3"
-    },
-    "peerDependencyRules": {
-      "allowedVersions": {
-        "@cloudflare/workers-types": ">=4.0.0",
-        "electron-builder-squirrel-windows": ">=26.0.0"
-      }
     }
-  },
-  "packageManager": "pnpm@9.15.9"
+  }
 }

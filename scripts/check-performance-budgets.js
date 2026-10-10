@@ -3,8 +3,8 @@
  * Enforces CI ratchets - budgets can only go down, never up
  */
 
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const TOLERANCE = 0.02; // 2% tolerance for measurement noise
 
@@ -91,6 +91,7 @@ function runBudgetCheck(metrics) {
   Object.entries(metrics).forEach(([category, categoryMetrics]) => {
     Object.entries(categoryMetrics).forEach(([name, actual]) => {
       const budgetEntry = budgets.budgets[category]?.[name];
+
       if (budgetEntry) {
         results.push(checkBudget(category, name, actual, budgetEntry.budget, budgetEntry.unit));
       }

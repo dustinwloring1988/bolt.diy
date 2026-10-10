@@ -1,16 +1,26 @@
 import type { ActionFunctionArgs } from 'react-router';
-import { MCPService, sanitizeMcpServerTools, type MCPConfig } from '~/lib/services/mcpService';
+import { authorizeMcpRequest } from '~/lib/.server/mcp-auth';
+import { withSecurity } from '~/lib/security';
+import { MCPService, sanitizeMcpServerTools, mcpConfigSchema } from '~/lib/services/mcpService';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('api.mcp-update-config');
 
-export async function action({ request }: ActionFunctionArgs) {
-  try {
-    const mcpConfig = (await request.json()) as MCPConfig;
+async function updateMcpConfig({ request, context }: ActionFunctionArgs) {
+  const denied = await authorizeMcpRequest(request, context.cloudflare?.env);
 
-    if (!mcpConfig || typeof mcpConfig !== 'object') {
+  if (denied) {
+    return denied;
+  }
+
+  try {
+    const parsedConfig = mcpConfigSchema.safeParse(await request.json());
+
+    if (!parsedConfig.success) {
       return Response.json({ error: 'Invalid MCP servers configuration' }, { status: 400 });
     }
+
+    const mcpConfig = parsedConfig.data;
 
     const posthog = mcpConfig.mcpServers.posthog;
 
@@ -34,9 +44,11 @@ export async function action({ request }: ActionFunctionArgs) {
       delete serverTools.posthog;
     }
 
-    return Response.json(sanitizeMcpServerTools(serverTools));
+    return Response.json(sanitizeMcpServerTools(serverTools), { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     logger.error('Error updating MCP config:', error);
     return Response.json({ error: 'Failed to update MCP config' }, { status: 500 });
   }
 }
+
+export const action = withSecurity(updateMcpConfig, { allowedMethods: ['POST'] });

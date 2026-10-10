@@ -1,7 +1,7 @@
 import { chmod, readFile, writeFile } from 'node:fs/promises';
-import { createInterface } from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
 import { join } from 'node:path';
+import { stdin as input, stdout as output } from 'node:process';
+import { createInterface } from 'node:readline/promises';
 
 const providers = [
   { name: 'OpenAI (GPT-4, GPT-4o)', key: 'OPENAI_API_KEY' },
@@ -43,8 +43,11 @@ async function askSecret(question) {
       output.write('\n');
       rl = createInterface({ input, output });
 
-      if (error) reject(error);
-      else resolve(answer.trim());
+      if (error) {
+        reject(error);
+      } else {
+        resolve(answer.trim());
+      }
     };
 
     const onData = (chunk) => {
@@ -128,8 +131,8 @@ function envValue(value, key) {
 }
 
 async function main() {
-  const ciEnvironment = ['CI', 'GITHUB_ACTIONS', 'TRAVIS', 'JENKINS_URL', 'CIRCLECI'].some(
-    (key) => Boolean(process.env[key]),
+  const ciEnvironment = ['CI', 'GITHUB_ACTIONS', 'TRAVIS', 'JENKINS_URL', 'CIRCLECI'].some((key) =>
+    Boolean(process.env[key]),
   );
 
   if (!input.isTTY || ciEnvironment) {
@@ -147,12 +150,15 @@ async function main() {
   }
 
   const envPath = join(process.cwd(), '.env.local');
+
   let existingContent = '';
 
   try {
     existingContent = await readFile(envPath, 'utf8');
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
   }
 
   const lines = existingContent.split(/\r?\n/);
@@ -160,6 +166,7 @@ async function main() {
   for (const [key, value] of entries) {
     const assignment = new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`);
     const newLine = `${key}=${envValue(value, key)}`;
+
     let didReplace = false;
 
     for (let index = 0; index < lines.length; index++) {
@@ -182,14 +189,19 @@ async function main() {
     .filter((line, index) => line || index < lines.length - 1)
     .join('\n')
     .trimEnd()}\n`;
+
   try {
     await chmod(envPath, 0o600);
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
   }
   await writeFile(envPath, content, { encoding: 'utf8', mode: 0o600 });
   await chmod(envPath, 0o600);
-  console.log('\nSetup complete. Restart the development server to load the new settings. Connect Supabase in the app settings.');
+  console.log(
+    '\nSetup complete. Restart the development server to load the new settings. Connect Supabase in the app settings.',
+  );
 }
 
 main()

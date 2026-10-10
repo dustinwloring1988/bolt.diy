@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 
 interface LayoutShiftEntry {
   region: string;
@@ -16,7 +16,7 @@ interface LayoutShiftEntry {
 }
 
 class LayoutShiftDetector {
-  private shifts: LayoutShiftEntry[] = [];
+  private _shifts: LayoutShiftEntry[] = [];
 
   /**
    * Record a layout shift
@@ -24,7 +24,7 @@ class LayoutShiftDetector {
   recordShift(region: string, phase: LayoutShiftEntry['phase'], shift: number): void {
     if (Math.abs(shift) > 0.5) {
       // Only record shifts > 0.5px
-      this.shifts.push({ region, phase, shift });
+      this._shifts.push({ region, phase, shift });
     }
   }
 
@@ -32,21 +32,21 @@ class LayoutShiftDetector {
    * Get all recorded shifts
    */
   getShifts(): LayoutShiftEntry[] {
-    return [...this.shifts];
+    return [...this._shifts];
   }
 
   /**
    * Check if any shifts were detected
    */
   hasShifts(): boolean {
-    return this.shifts.length > 0;
+    return this._shifts.length > 0;
   }
 
   /**
    * Clear recorded shifts
    */
   clear(): void {
-    this.shifts = [];
+    this._shifts = [];
   }
 }
 
@@ -158,7 +158,6 @@ describe('Layout Stability - Sidebar', () => {
     );
 
     const sidebar = container.querySelector('[data-testid="sidebar"]');
-    const initialHeight = sidebar!.getBoundingClientRect().height;
     const initialChildCount = sidebar!.children.length;
 
     // Simulate data loading (staggered, like Claude.dev found)
@@ -181,7 +180,6 @@ describe('Layout Stability - Sidebar', () => {
       </div>,
     );
 
-    const finalHeight = sidebar!.getBoundingClientRect().height;
     const finalChildCount = sidebar!.children.length;
 
     // Check that children increased (sidebar grew)

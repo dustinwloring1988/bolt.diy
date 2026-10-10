@@ -45,7 +45,6 @@ jobs:
 
       - name: Run performance tests
         run: pnpm run perf:test
-        continue-on-error: true
         id: perf-tests
 
       - name: Build for bundle analysis
@@ -55,7 +54,6 @@ jobs:
 
       - name: Analyze bundle sizes
         run: pnpm run perf:analyze
-        continue-on-error: true
         id: bundle-analysis
 
       - name: Comment PR with results

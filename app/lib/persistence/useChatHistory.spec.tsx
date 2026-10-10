@@ -2,7 +2,14 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { UIMessage } from 'ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { resetWorkbench } = vi.hoisted(() => ({ resetWorkbench: vi.fn(async () => undefined) }));
+const { resetWorkbench, mkdir, writeFile, getNextId, setMessages, setSnapshot } = vi.hoisted(() => ({
+  resetWorkbench: vi.fn<() => Promise<void>>(async () => undefined),
+  mkdir: vi.fn<() => Promise<void>>(async () => undefined),
+  writeFile: vi.fn<() => Promise<void>>(async () => undefined),
+  getNextId: vi.fn(async () => '3'),
+  setMessages: vi.fn(async () => undefined),
+  setSnapshot: vi.fn(async () => undefined),
+}));
 
 /*
  * `~/lib/stores/workbench` and `~/lib/webcontainer` both read
@@ -23,16 +30,16 @@ vi.mock('~/lib/stores/workbench', () => ({
  * pending on purpose.
  */
 vi.mock('~/lib/webcontainer', () => ({
-  webcontainer: new Promise(() => undefined),
+  webcontainer: Promise.resolve({ workdir: '/home/project', fs: { mkdir, writeFile } }),
   webcontainerContext: { loaded: false },
 }));
 
 vi.mock('./db', () => ({
   openDatabase: vi.fn(async () => ({})),
-  getNextId: vi.fn(async () => '3'),
+  getNextId,
   getUrlId: vi.fn(async () => 'chat-new'),
-  setMessages: vi.fn(async () => undefined),
-  setSnapshot: vi.fn(async () => undefined),
+  setMessages,
+  setSnapshot,
   duplicateChat: vi.fn(async () => 'dupe'),
   createChatFromMessages: vi.fn(async () => 'imported'),
   getMessagesByIdRaw: vi.fn(async () => undefined),
@@ -51,21 +58,30 @@ const records: Record<string, { id: string; urlId: string }> = {
   3: { id: '3', urlId: '3' },
 };
 
+const snapshots: Record<string, unknown> = {};
+
 vi.mock('./chatCache', () => ({
   getCachedMessages: vi.fn(async (_db: unknown, routeId: string) => {
     const record = records[routeId];
+    const messages = snapshots[routeId]
+      ? [
+          { id: `${routeId}-user`, role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+          { id: 'snapshot-message', role: 'assistant', parts: [{ type: 'text', text: 'snapshot' }] },
+          { id: `${routeId}-assistant`, role: 'assistant', parts: [{ type: 'text', text: 'hello' }] },
+        ]
+      : [
+          { id: `${routeId}-user`, role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+          { id: `${routeId}-assistant`, role: 'assistant', parts: [{ type: 'text', text: 'hello' }] },
+        ];
 
     return {
       id: record?.id ?? routeId,
       urlId: record?.urlId ?? routeId,
       description: routeId,
-      messages: [
-        { id: `${routeId}-user`, role: 'user', parts: [{ type: 'text', text: 'hi' }] },
-        { id: `${routeId}-assistant`, role: 'assistant', parts: [{ type: 'text', text: 'hello' }] },
-      ] as UIMessage[],
+      messages: messages as UIMessage[],
     };
   }),
-  getCachedSnapshot: vi.fn(async () => undefined),
+  getCachedSnapshot: vi.fn(async (_db: unknown, routeId: string) => snapshots[routeId]),
   invalidateChatCache: vi.fn(),
 }));
 
@@ -108,6 +124,13 @@ async function importHook() {
 describe('useChatHistory chat switching', () => {
   beforeEach(() => {
     resetWorkbench.mockClear();
+    mkdir.mockClear();
+    writeFile.mockClear();
+    getNextId.mockReset();
+    getNextId.mockResolvedValue('3');
+    setMessages.mockClear();
+    setSnapshot.mockClear();
+    Object.keys(snapshots).forEach((key) => delete snapshots[key]);
     routeId = 'chat-a';
     routeSearch = '';
     searchParamsCache.clear();
@@ -143,9 +166,167 @@ describe('useChatHistory chat switching', () => {
     await waitFor(() => expect(result.current.chatChanged).toBe(true));
   });
 
+  it('ignores an older chat load that finishes after navigation to a newer chat', async () => {
+    let releaseReset!: () => void;
+    resetWorkbench.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseReset = resolve;
+        }),
+    );
+
+    const useChatHistory = await importHook();
+    const { rerender, result } = renderHook(() => useChatHistory());
+
+    await waitFor(() => expect(resetWorkbench).toHaveBeenCalledTimes(1));
+
+    routeId = 'chat-b';
+    rerender();
+    releaseReset();
+
+    await waitFor(() => expect(result.current.initialMessages[0]?.id).toBe('chat-b-user'));
+    expect(result.current.initialMessages.some((message) => message.id.startsWith('chat-a'))).toBe(false);
+  });
+
+  it('replays the returning chat snapshot when a delayed reset finishes after A to B to A navigation', async () => {
+    const useChatHistory = await importHook();
+    const { rerender, result } = renderHook(() => useChatHistory());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    let finishBReset!: () => void;
+    resetWorkbench.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishBReset = resolve;
+        }),
+    );
+    routeId = 'chat-b';
+    rerender();
+    await waitFor(() => expect(resetWorkbench).toHaveBeenCalledTimes(2));
+
+    snapshots['chat-a'] = {
+      chatIndex: 'snapshot-message',
+      files: { '/home/project/src/returning.ts': { type: 'file', content: 'restored', isBinary: false } },
+    };
+    routeId = 'chat-a';
+    rerender();
+    finishBReset();
+
+    await waitFor(() =>
+      expect(result.current.initialMessages.some((message) => message.id === 'chat-a-assistant')).toBe(true),
+    );
+    expect(resetWorkbench).toHaveBeenCalledTimes(3);
+    expect(writeFile).toHaveBeenCalledWith('/src/returning.ts', 'restored', { encoding: 'utf8' });
+  });
+
+  it('waits for snapshot directories and files before exposing loaded messages', async () => {
+    const useChatHistory = await importHook();
+    const { result, rerender } = renderHook(() => useChatHistory());
+
+    // Let the initial chat load finish before setting up the snapshot route.
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    let finishWrite!: () => void;
+    writeFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    snapshots['chat-b'] = {
+      chatIndex: 'snapshot-message',
+      files: {
+        '/home/project/src': { type: 'folder' },
+        '/home/project/src/app.ts': { type: 'file', content: 'export {}', isBinary: false },
+      },
+    };
+
+    routeId = 'chat-b';
+    rerender();
+
+    await waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
+    expect(result.current.ready).toBe(false);
+    expect(result.current.initialMessages).toEqual([]);
+    finishWrite();
+    await waitFor(() =>
+      expect(result.current.initialMessages.some((message) => message.id === 'chat-b-assistant')).toBe(true),
+    );
+  });
+
+  it('cancels remaining snapshot writes and drains the workbench before entering a fresh chat', async () => {
+    const useChatHistory = await importHook();
+    const { result, rerender } = renderHook(() => useChatHistory());
+
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    let finishWrite!: () => void;
+    writeFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    snapshots['chat-b'] = {
+      chatIndex: 'snapshot-message',
+      files: {
+        '/home/project/src': { type: 'folder' },
+        '/home/project/src/one.ts': { type: 'file', content: 'one', isBinary: false },
+        '/home/project/src/two.ts': { type: 'file', content: 'two', isBinary: false },
+      },
+    };
+
+    routeId = 'chat-b';
+    rerender();
+    await waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
+
+    routeId = undefined;
+    rerender();
+    expect(result.current.ready).toBe(false);
+    finishWrite();
+
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.initialMessages).toEqual([]);
+    expect(writeFile).toHaveBeenCalledTimes(1);
+    expect(resetWorkbench).toHaveBeenCalledTimes(3);
+  });
+
+  it('cancels remaining snapshot writes when the hook unmounts', async () => {
+    const useChatHistory = await importHook();
+    const { rerender, unmount } = renderHook(() => useChatHistory());
+
+    await waitFor(() => expect(resetWorkbench).toHaveBeenCalledTimes(1));
+
+    let finishWrite!: () => void;
+    writeFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    snapshots['chat-b'] = {
+      chatIndex: 'snapshot-message',
+      files: {
+        '/home/project/src': { type: 'folder' },
+        '/home/project/src/one.ts': { type: 'file', content: 'one', isBinary: false },
+        '/home/project/src/two.ts': { type: 'file', content: 'two', isBinary: false },
+      },
+    };
+
+    routeId = 'chat-b';
+    rerender();
+    await waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
+    unmount();
+    await act(async () => {
+      finishWrite();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(writeFile).toHaveBeenCalledTimes(1);
+  });
+
   it('should not reset the workbench when only the query string changes', async () => {
     const useChatHistory = await importHook();
-    const { rerender } = renderHook(() => useChatHistory());
+    const { rerender, result } = renderHook(() => useChatHistory());
 
     await waitFor(() => expect(resetWorkbench).toHaveBeenCalledTimes(1));
 
@@ -157,6 +338,7 @@ describe('useChatHistory chat switching', () => {
     rerender();
 
     await waitFor(() => expect(resetWorkbench).toHaveBeenCalledTimes(1));
+    expect(result.current.ready).toBe(true);
   });
 
   it('should reset the workbench and the container when leaving a chat for a fresh one', async () => {
@@ -227,5 +409,44 @@ describe('useChatHistory chat switching', () => {
     await waitFor(() => expect(result.current.initialMessages.length).toBeGreaterThan(0));
     expect(resetWorkbench).not.toHaveBeenCalled();
     expect(result.current.chatChanged).toBe(false);
+    expect(result.current.ready).toBe(true);
+  });
+
+  it('saves a pending new-chat exchange to its captured ID after navigation changes', async () => {
+    let finishIdLookup!: () => void;
+    getNextId.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finishIdLookup = () => resolve('3');
+        }),
+    );
+
+    routeId = undefined;
+    const useChatHistory = await importHook();
+    const { rerender, result } = renderHook(() => useChatHistory());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    const save = result.current.storeMessageHistory([
+      {
+        id: 'outgoing-message',
+        role: 'assistant',
+        content: 'outgoing chat',
+        parts: [{ type: 'text', text: 'outgoing chat' }],
+      },
+    ] as any);
+    await waitFor(() => expect(getNextId).toHaveBeenCalledTimes(1));
+
+    routeId = 'chat-a';
+    rerender();
+    await waitFor(() => expect(result.current.initialMessages[0]?.id).toBe('chat-a-user'));
+    finishIdLookup();
+    await save;
+
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    const savedCalls = setMessages.mock.calls as unknown as Array<[unknown, string, UIMessage[]]>;
+    expect(savedCalls[0][1]).toBe('3');
+    expect(savedCalls[0][2].some((message) => message.id === 'outgoing-message')).toBe(true);
+    const snapshotCalls = setSnapshot.mock.calls as unknown as Array<[unknown, string]>;
+    expect(snapshotCalls[0][1]).toBe('3');
   });
 });

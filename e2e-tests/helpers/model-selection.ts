@@ -70,6 +70,7 @@ export async function selectFreeModel(page: Page) {
         }
         
         console.log('Model selection succeeded');
+
         return;
       } catch (e) {
         console.log('Combobox selection failed:', e);
@@ -96,6 +97,7 @@ export async function selectFreeModel(page: Page) {
             await openRouterOption.click();
             await page.waitForTimeout(2000);
             console.log('Selected via fallback method');
+
             return;
           }
         }

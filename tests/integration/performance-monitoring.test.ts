@@ -176,7 +176,7 @@ describe('Performance Monitoring Integration', () => {
       }));
 
       // Verify each journey has complete stats
-      stats.forEach(({ name, stats: journeyStats }) => {
+      stats.forEach(({ stats: journeyStats }) => {
         expect(journeyStats).not.toBeNull();
         expect(journeyStats!.count).toBe(5);
         expect(journeyStats!.p50).toBeGreaterThan(0);

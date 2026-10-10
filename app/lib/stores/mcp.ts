@@ -8,6 +8,18 @@ const POSTHOG_SERVER_ID = 'posthog';
 const POSTHOG_SERVER_URL = 'https://mcp.posthog.com/mcp';
 const isBrowser = typeof window !== 'undefined';
 
+function clearLegacyAdminToken() {
+  if (!isBrowser) {
+    return;
+  }
+
+  try {
+    sessionStorage.removeItem('mcp_config_token');
+  } catch {
+    // Storage may be disabled; the app does not rely on it for MCP authorization.
+  }
+}
+
 type MCPSettings = {
   mcpConfig: MCPConfig;
   maxLLMSteps: number;
@@ -32,6 +44,7 @@ type Actions = {
   initialize: () => Promise<void>;
   updateSettings: (settings: MCPSettings) => Promise<void>;
   checkServersAvailabilities: () => Promise<void>;
+  authenticate: (token: string) => Promise<void>;
 };
 
 export const useMCPStore = create<Store & Actions>((set, get) => ({
@@ -44,6 +57,8 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
     if (get().isInitialized) {
       return;
     }
+
+    clearLegacyAdminToken();
 
     if (isBrowser) {
       const savedConfig = localStorage.getItem(MCP_SETTINGS_KEY);
@@ -76,7 +91,18 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
 
           restorePostHogSessionToken(settings);
 
-          const serverTools = await updateServerConfig(settings.mcpConfig);
+          set(() => ({ settings }));
+
+          let serverTools: MCPServerTools = {};
+
+          if (Object.keys(settings.mcpConfig.mcpServers).length > 0) {
+            try {
+              serverTools = await updateServerConfig(settings.mcpConfig);
+            } catch {
+              // The HttpOnly session may have expired; keep saved settings available for re-authentication.
+            }
+          }
+
           set(() => ({ settings, serverTools }));
           persistSettings(settings);
         } catch (error) {
@@ -122,6 +148,36 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
       set(() => ({ isUpdatingConfig: false }));
     }
   },
+  authenticate: async (token: string) => {
+    if (!token) {
+      const response = await fetch('/api/mcp-auth', { method: 'DELETE' });
+
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+      }
+
+      set(() => ({ serverTools: {}, error: null }));
+
+      return;
+    }
+
+    const response = await fetch('/api/mcp-auth', { method: 'POST', headers: { 'X-MCP-Config-Token': token } });
+
+    if (!response.ok) {
+      set(() => ({ serverTools: {} }));
+
+      const error = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(error.error ?? `Server responded with ${response.status}: ${response.statusText}`);
+    }
+
+    try {
+      const serverTools = await updateServerConfig(get().settings.mcpConfig);
+      set(() => ({ serverTools, error: null }));
+    } catch (error) {
+      set(() => ({ serverTools: {} }));
+      throw error;
+    }
+  },
   checkServersAvailabilities: async () => {
     const response = await fetch('/api/mcp-check', {
       method: 'POST',
@@ -130,7 +186,8 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
     });
 
     if (!response.ok) {
-      throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+      const error = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(error.error ?? `Server responded with ${response.status}: ${response.statusText}`);
     }
 
     const serverTools = (await response.json()) as MCPServerTools;
@@ -311,7 +368,8 @@ async function updateServerConfig(config: MCPConfig) {
   });
 
   if (!response.ok) {
-    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+    const error = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(error.error ?? `Server responded with ${response.status}: ${response.statusText}`);
   }
 
   const data = (await response.json()) as MCPServerTools;

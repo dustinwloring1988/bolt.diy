@@ -57,7 +57,7 @@ test.describe('Basic Chat Functionality', () => {
           await modelSelector.selectOption({ index: 0 });
         }
       }
-    } catch (e) {
+    } catch {
       // Model selector might not be accessible or already configured
       console.log('Model selector not accessible, using default model');
     }

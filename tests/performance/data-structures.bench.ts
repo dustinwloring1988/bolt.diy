@@ -61,16 +61,18 @@ describe('Object vs Map for Key-Value Storage', () => {
 
   it('should benchmark Object vs Map access', () => {
     const iterations = 10000;
+    let objectSum = 0;
     
     const objStart = performance.now();
     for (let i = 0; i < iterations; i++) {
-      const val = obj['key500'];
+      objectSum += obj.key500;
     }
     const objTime = performance.now() - objStart;
     
+    let mapSum = 0;
     const mapStart = performance.now();
     for (let i = 0; i < iterations; i++) {
-      const val = map.get('key500');
+      mapSum += map.get('key500') ?? 0;
     }
     const mapTime = performance.now() - mapStart;
     
@@ -79,6 +81,7 @@ describe('Object vs Map for Key-Value Storage', () => {
     
     expect(objTime).toBeGreaterThan(0);
     expect(mapTime).toBeGreaterThan(0);
+    expect(objectSum).toBe(mapSum);
   });
 });
 

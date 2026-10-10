@@ -14,11 +14,12 @@ import { createSummary } from '~/lib/.server/llm/create-summary';
 import { getFilePaths, selectContext } from '~/lib/.server/llm/select-context';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
+import { authorizeMcpRequest } from '~/lib/.server/mcp-auth';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
 import { checkRateLimit, withSecurity } from '~/lib/security';
-import { MCPService, type MCPConfig } from '~/lib/services/mcpService';
+import { MCPService, mcpConfigSchema, type MCPConfig } from '~/lib/services/mcpService';
 import type { ContextAnnotation, ProgressAnnotation } from '~/types/context';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { IProviderSetting } from '~/types/model';
@@ -139,6 +140,20 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     mcpConfig?: MCPConfig;
   }>();
 
+  const parsedMcpConfig = mcpConfig === undefined ? undefined : mcpConfigSchema.safeParse(mcpConfig);
+
+  if (parsedMcpConfig && !parsedMcpConfig.success) {
+    return Response.json({ error: 'Invalid MCP servers configuration' }, { status: 400 });
+  }
+
+  if (parsedMcpConfig?.data && Object.keys(parsedMcpConfig.data.mcpServers).length > 0) {
+    const denied = await authorizeMcpRequest(request, context.cloudflare?.env);
+
+    if (denied) {
+      return denied;
+    }
+  }
+
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = getApiKeysFromCookie(cookieHeader);
   const providerSettings: Record<string, IProviderSetting> = getProviderSettingsFromCookie(cookieHeader);
@@ -158,11 +173,12 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
   let progressCounter: number = 1;
 
   try {
-    const requestMcpService = mcpConfig ? new MCPService() : null;
-    const mcpService = requestMcpService ?? MCPService.getInstance();
+    // Only the requesting browser's authorized configuration belongs to this chat.
+    const requestMcpService = new MCPService();
+    const mcpService = requestMcpService;
 
-    if (requestMcpService) {
-      await requestMcpService.updateConfig(mcpConfig!);
+    if (parsedMcpConfig?.data) {
+      await requestMcpService.updateConfig(parsedMcpConfig.data);
     }
 
     const totalMessageContent = messages.reduce((acc, message) => acc + getMessageText(message), '');

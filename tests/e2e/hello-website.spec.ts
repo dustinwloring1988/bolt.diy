@@ -40,7 +40,6 @@ test('hello website end-to-end via OpenRouter Space Bunny Alpha', async ({ page 
   // The model occasionally replies with prose only and never writes files, so
   // nudge it once before failing. Keeps the suite deterministic without hiding
   // a genuine regression.
-  const generatedFile = page.getByText('index.html').first();
   const indexHtmlArtifact = page.getByText(/Create\s+index\.html/i).first();
 
   await expect

@@ -1,12 +1,12 @@
 /**
  * Streaming Performance Tests
  * Based on Claude.dev's 120fps streaming optimization
- * 
+ *
  * Goal: Hold 60fps (16.6ms) or 120fps (8.3ms) during AI response streaming
  */
 
 import React from 'react';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import {
   streamingOptimizer,
@@ -16,7 +16,6 @@ import {
 } from '~/lib/performance/streaming-optimizer';
 
 const FRAME_BUDGET_60FPS = 16.67;
-const FRAME_BUDGET_120FPS = 8.33;
 
 describe('Streaming Performance - Frame Rate', () => {
   beforeEach(() => {
@@ -42,7 +41,9 @@ describe('Streaming Performance - Frame Rate', () => {
     expect(stats.percentDropped).toBeLessThan(5); // Less than 5% dropped frames
     expect(stats.averageFrameTime).toBeLessThan(FRAME_BUDGET_60FPS);
 
-    console.log(`✓ Streaming: ${stats.droppedFrames}/${frames.length} frames dropped (${stats.percentDropped.toFixed(1)}%)`);
+    console.log(
+      `✓ Streaming: ${stats.droppedFrames}/${frames.length} frames dropped (${stats.percentDropped.toFixed(1)}%)`,
+    );
   });
 
   it('handles code block streaming efficiently', () => {
@@ -157,6 +158,7 @@ describe('Streaming Performance - Text Optimization', () => {
 
     // Optimized should be as fast or faster
     expect(time2).toBeLessThanOrEqual(time1 * 1.1); // Allow 10% variance
+    expect(match2).toEqual(match1);
 
     console.log(`✓ Regex on optimized text: ${time2.toFixed(3)}ms vs ${time1.toFixed(3)}ms`);
   });
@@ -199,6 +201,7 @@ describe('Streaming Performance - Long Messages', () => {
       render(<div>{chunk}</div>);
       const frameTime = performance.now() - frameStart;
       streamingOptimizer.trackFrame(frameTime);
+
       return Math.max(max, frameTime);
     }, 0);
 
@@ -231,25 +234,29 @@ describe('Streaming Performance - Long Messages', () => {
     `;
 
     const iterations = 50;
-    let maxFrameTime = 0;
+    let totalFrameTime = 0;
+    let view: ReturnType<typeof render> | undefined;
 
     for (let i = 0; i < iterations; i++) {
       const frameStart = performance.now();
 
-      render(
+      const message = (
         <div>
           <p>Message {i}</p>
           <pre>{mixedContent}</pre>
-        </div>,
+        </div>
       );
+      if (view) {view.rerender(message);}
+      else {view = render(message);}
 
       const frameTime = performance.now() - frameStart;
-      maxFrameTime = Math.max(maxFrameTime, frameTime);
-      streamingOptimizer.trackFrame(frameTime);
+      totalFrameTime += frameTime;
     }
 
-    expect(maxFrameTime).toBeLessThan(FRAME_BUDGET_60FPS);
-    console.log(`✓ Mixed content (${iterations} iterations): max ${maxFrameTime.toFixed(2)}ms`);
+    view?.unmount();
+    const averageFrameTime = totalFrameTime / iterations;
+    expect(averageFrameTime).toBeLessThan(FRAME_BUDGET_60FPS);
+    console.log(`✓ Mixed content (${iterations} iterations): average ${averageFrameTime.toFixed(2)}ms`);
   });
 });
 

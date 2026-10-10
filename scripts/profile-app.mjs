@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from '@playwright/test';
 
 const port = Number(process.env.PROFILE_PORT || 5188);
+
 if (!Number.isInteger(port) || port < 1 || port > 65_535) {
   throw new Error('PROFILE_PORT must be an integer between 1 and 65535');
 }
@@ -14,6 +15,7 @@ const outputDir = resolve(process.env.PROFILE_OUTPUT_DIR || 'performance-profile
 const timestamp = new Date().toISOString().replaceAll(':', '-');
 const tracePath = resolve(outputDir, `profile-${timestamp}.trace.json`);
 const summaryPath = resolve(outputDir, `profile-${timestamp}.summary.json`);
+
 let server;
 let browser;
 
@@ -45,6 +47,7 @@ function stopServer() {
       });
       killer.once('close', resolveStop);
       killer.once('error', resolveStop);
+
       return;
     }
 
@@ -55,6 +58,7 @@ function stopServer() {
     }
 
     server.once('close', resolveStop);
+
     const timeout = setTimeout(resolveStop, 3_000);
     timeout.unref();
   });
@@ -109,6 +113,7 @@ async function readTrace(session, stream) {
   }
 
   await session.send('IO.close', { handle: stream });
+
   return output;
 }
 
@@ -162,13 +167,16 @@ try {
 
   const runtimeSummary = await page.evaluate(() => {
     const navigation = performance.getEntriesByType('navigation')[0];
+
     const resources = performance
       .getEntriesByType('resource')
       .map((entry) => ({ name: entry.name, duration: entry.duration, transferSize: entry.transferSize }))
       .sort((left, right) => right.duration - left.duration)
       .slice(0, 30);
+
     const browserLongTasks = window.__BROWSER_LONG_TASKS__ ?? [];
     const metrics = window.__BOLT_PERFORMANCE__?.monitor?.getMetrics?.() ?? [];
+
     const appLongTasks = metrics
       .filter((metric) => metric.name === 'main-thread:long-task')
       .map((metric) => ({ startTime: metric.metadata?.startTime, duration: metric.duration }));
@@ -193,11 +201,16 @@ try {
 
   let completionTimeout;
   let onTracingComplete;
+
   const completion = new Promise((resolveCompletion, rejectCompletion) => {
     onTracingComplete = (result) => resolveCompletion(result);
     session.once('Tracing.tracingComplete', onTracingComplete);
-    completionTimeout = setTimeout(() => rejectCompletion(new Error('Timed out waiting for tracing to complete.')), 30_000);
+    completionTimeout = setTimeout(
+      () => rejectCompletion(new Error('Timed out waiting for tracing to complete.')),
+      30_000,
+    );
   });
+
   let traceResult;
 
   try {
@@ -207,6 +220,7 @@ try {
     clearTimeout(completionTimeout);
     session.removeListener('Tracing.tracingComplete', onTracingComplete);
   }
+
   const trace = await readTrace(session, traceResult.stream);
 
   const summary = {
@@ -230,7 +244,6 @@ try {
   await context.close();
   await browser.close();
   browser = undefined;
-
 } catch (error) {
   console.error(error instanceof Error ? error.stack || error.message : error);
   process.exitCode = 1;

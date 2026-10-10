@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: node_modules/.cache/eslint
-          key: ${{ runner.os }}-eslint-${{ hashFiles('.eslintrc*', 'app/**/*.ts', 'app/**/*.tsx') }}
+          key: ${{ runner.os }}-eslint-${{ hashFiles('eslint.config.mjs', 'app/**/*.{ts,tsx}', 'electron/**/*.{ts,tsx}', 'scripts/**/*.{js,mjs,ts}', 'tests/**/*.{ts,tsx}', 'e2e-tests/**/*.{js,ts}', 'workers/**/*.{ts,tsx}', '*.{ts,js,mjs,cjs}') }}
           restore-keys: |
             ${{ runner.os }}-eslint-
 
@@ -49,7 +49,10 @@ jobs:
         run: pnpm run lint
 
       - name: Run tests
-        run: pnpm run test
+        run: pnpm run test:coverage
+
+      - name: Run uninstrumented performance tests
+        run: pnpm run perf:test
 
       - name: Upload test coverage
         uses: actions/upload-artifact@v7
@@ -58,6 +61,7 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
+          if-no-files-found: error
 
   docker-validation:
     name: Docker Build Validation

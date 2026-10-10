@@ -1,10 +1,10 @@
-import { createReadableStreamFromReadable } from '@react-router/node';
-import type { ServerBuild } from 'react-router';
-import mime from 'mime';
 import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createReadableStreamFromReadable } from '@react-router/node';
 import { app } from 'electron';
+import mime from 'mime';
+import type { ServerBuild } from 'react-router';
 import { isDev } from './constants';
 
 export async function loadServerBuild(): Promise<any> {
@@ -37,6 +37,7 @@ export async function loadServerBuild(): Promise<any> {
 // serve assets built by vite.
 export async function serveAsset(req: Request, assetsPath: string): Promise<Response | undefined> {
   const url = new URL(req.url);
+
   let decodedPath: string;
 
   try {
@@ -48,6 +49,7 @@ export async function serveAsset(req: Request, assetsPath: string): Promise<Resp
   const resolvedAssetsPath = path.resolve(assetsPath);
   const fullPath = path.resolve(resolvedAssetsPath, decodedPath);
   console.log('Serving asset, path:', fullPath);
+
   const relativePath = path.relative(resolvedAssetsPath, fullPath);
 
   if (relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {

@@ -15,63 +15,54 @@ jobs:
   quality-gates:
     name: Quality Gates
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Wait for CI checks
-        uses: lewagon/wait-on-check-action@v1.3.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          check-name: 'Test'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-          running-workflow-name: 'Quality Gates'
-          allowed-conclusions: success,skipped,neutral
-
-      - name: Check required status checks
+      - name: Wait for and validate required status checks
         uses: actions/github-script@v9
-        continue-on-error: true
         with:
           script: |
-            const { data: checks } = await github.rest.checks.listForRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: context.payload.pull_request.head.sha
-            });
+            const requiredCodeQlChecks = 1;
+            const deadline = Date.now() + 30 * 60 * 1000;
+            const ref = context.payload.pull_request.head.sha;
 
-            const requiredChecks = ['Test', 'CodeQL Analysis'];
-            const optionalChecks = ['Quality Analysis', 'Deploy Preview'];
-            const failedChecks = [];
-            const passedChecks = [];
+            while (Date.now() < deadline) {
+              const checkRuns = await github.paginate(github.rest.checks.listForRef, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref,
+                per_page: 100,
+              });
 
-            // Check required workflows
-            for (const checkName of requiredChecks) {
-              const check = checks.check_runs.find(c => c.name === checkName);
-              if (check && check.conclusion === 'success') {
-                passedChecks.push(checkName);
+              const testChecks = checkRuns.filter(check => check.name === 'Test');
+              const codeQlChecks = checkRuns.filter(check => check.name.startsWith('CodeQL Analysis'));
+              const requiredChecks = [...testChecks, ...codeQlChecks];
+
+              if (testChecks.length > 0 && codeQlChecks.length >= requiredCodeQlChecks) {
+                const pendingChecks = requiredChecks.filter(check => check.status !== 'completed');
+                if (pendingChecks.length > 0) {
+                  core.info(`Waiting for required checks: ${pendingChecks.map(check => check.name).join(', ')}`);
+                } else {
+                  const failedChecks = requiredChecks.filter(check => check.conclusion !== 'success');
+                  if (failedChecks.length > 0) {
+                    core.setFailed(`Required checks failed: ${failedChecks.map(check => `${check.name} (${check.conclusion})`).join(', ')}`);
+                    return;
+                  }
+
+                  core.info(`Required checks passed: ${requiredChecks.map(check => check.name).join(', ')}`);
+                  return;
+                }
               } else {
-                failedChecks.push(checkName);
+                core.info('Waiting for Test and CodeQL Analysis checks to start.');
               }
+
+              await new Promise(resolve => setTimeout(resolve, 10_000));
             }
 
-            // Report optional checks
-            for (const checkName of optionalChecks) {
-              const check = checks.check_runs.find(c => c.name === checkName);
-              if (check && check.conclusion === 'success') {
-                passedChecks.push(`${checkName} (optional)`);
-              }
-            }
-
-            console.log(`✅ Passed checks: ${passedChecks.join(', ')}`);
-            
-            if (failedChecks.length > 0) {
-              console.log(`❌ Failed required checks: ${failedChecks.join(', ')}`);
-              core.setFailed(`Required checks failed: ${failedChecks.join(', ')}`);
-            } else {
-              console.log(`✅ All required checks passed!`);
-            }
+            core.setFailed('Timed out after 30 minutes waiting for required Test and CodeQL Analysis checks.');
 
   validate-release:
     name: Release Validation
