@@ -96,6 +96,8 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
       return;
     }
 
+    const previousPostHogToken = isBrowser ? sessionStorage.getItem(POSTHOG_SESSION_TOKEN_KEY) : null;
+
     try {
       set(() => ({ isUpdatingConfig: true }));
 
@@ -106,6 +108,14 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
 
       set(() => ({ settings: safeSettings, serverTools }));
     } catch (error) {
+      if (isBrowser) {
+        if (previousPostHogToken === null) {
+          sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
+        } else {
+          sessionStorage.setItem(POSTHOG_SESSION_TOKEN_KEY, previousPostHogToken);
+        }
+      }
+
       throw error;
     } finally {
       set(() => ({ isUpdatingConfig: false }));
