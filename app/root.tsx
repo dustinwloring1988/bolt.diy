@@ -76,12 +76,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         */}
         <ClientOnly
           fallback={
-            <div
-              className="flex h-full w-full items-center justify-center bg-bolt-elements-background-depth-1"
-              role="status"
-            >
-              Loading Bolt...
-            </div>
+            <main className="flex h-full w-full items-center justify-center bg-bolt-elements-background-depth-1">
+              <h1 className="text-base font-medium text-bolt-elements-textPrimary" role="status">
+                Loading Bolt...
+              </h1>
+            </main>
           }
         >
           {() => <DndProvider backend={HTML5Backend}>{children}</DndProvider>}
