@@ -122,7 +122,17 @@ class PerformanceMonitor {
       metadata,
     };
 
-    this._metrics.push(metric);
+    const metricId = metadata?.metricId;
+
+    const existingIndex = metricId
+      ? this._metrics.findIndex((item) => item.name === name && item.metadata?.metricId === metricId)
+      : -1;
+
+    if (existingIndex >= 0) {
+      this._metrics[existingIndex] = metric;
+    } else {
+      this._metrics.push(metric);
+    }
 
     if (this._metrics.length > this._maxMetrics) {
       this._metrics.splice(0, this._metrics.length - this._maxMetrics);
@@ -134,7 +144,7 @@ class PerformanceMonitor {
     }
 
     // Send to analytics in production
-    if (import.meta.env.PROD) {
+    if (import.meta.env.PROD && existingIndex < 0) {
       this._sendToAnalytics(metric);
     }
   }
@@ -347,10 +357,16 @@ export function observeWebVitals() {
 
   void import('web-vitals')
     .then(({ onCLS, onFCP, onINP, onLCP, onTTFB }) => {
-      onCLS((metric) => performanceMonitor.recordMetric('web-vitals:cls', metric.value, { rating: metric.rating }));
+      onCLS((metric) =>
+        performanceMonitor.recordMetric('web-vitals:cls', metric.value, { rating: metric.rating, metricId: metric.id }),
+      );
       onFCP((metric) => performanceMonitor.recordMetric('web-vitals:fcp', metric.value, { rating: metric.rating }));
-      onINP((metric) => performanceMonitor.recordMetric('web-vitals:inp', metric.value, { rating: metric.rating }));
-      onLCP((metric) => performanceMonitor.recordMetric('web-vitals:lcp', metric.value, { rating: metric.rating }));
+      onINP((metric) =>
+        performanceMonitor.recordMetric('web-vitals:inp', metric.value, { rating: metric.rating, metricId: metric.id }),
+      );
+      onLCP((metric) =>
+        performanceMonitor.recordMetric('web-vitals:lcp', metric.value, { rating: metric.rating, metricId: metric.id }),
+      );
       onTTFB((metric) => performanceMonitor.recordMetric('web-vitals:ttfb', metric.value, { rating: metric.rating }));
     })
     .catch((error) => {

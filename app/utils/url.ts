@@ -14,10 +14,17 @@ export function isPublicIpAddress(address: string): boolean {
     }
 
     const firstSegment = Number.parseInt(normalized.split(':')[0] || '0', 16);
+    const [ipv6First = '', ipv6Second = '', ipv6Third = ''] = normalized.split(':');
+
+    const isBenchmarkingAddress =
+      ipv6First === '2001' &&
+      Number.parseInt(ipv6Second || '0', 16) === 2 &&
+      Number.parseInt(ipv6Third || '0', 16) === 0;
 
     return (
       firstSegment >= 0x2000 &&
       firstSegment <= 0x3fff &&
+      !isBenchmarkingAddress &&
       !normalized.startsWith('2001:20:') &&
       !normalized.startsWith('2001:0020:') &&
       !normalized.startsWith('2001:db8:') &&

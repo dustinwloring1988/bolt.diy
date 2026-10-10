@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { mcpServerConfigSchema, type MCPConfig, type MCPServerTools } from '~/lib/services/mcpService';
+import { mcpServerConfigSchema } from '~/lib/services/mcpConfig';
+import type { MCPConfig, MCPServerTools } from '~/lib/services/mcpService';
 
 const MCP_SETTINGS_KEY = 'mcp_settings';
 const POSTHOG_SESSION_TOKEN_KEY = 'posthog_mcp_token';
@@ -123,7 +124,9 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
   },
   checkServersAvailabilities: async () => {
     const response = await fetch('/api/mcp-check', {
-      method: 'GET',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(get().settings.mcpConfig),
     });
 
     if (!response.ok) {

@@ -29,7 +29,7 @@ export function prebootWebContainer(): void {
    * error that fires when this optimizer tried to call boot() a second time.
    */
   webContainerBootPromise = import('~/lib/webcontainer')
-    .then(({ webcontainer }) => webcontainer)
+    .then(({ retryWebContainerBoot }) => retryWebContainerBoot())
     .then((instance) => {
       console.log('[WEBCONTAINER] Booted successfully');
       webContainerInstance = instance;

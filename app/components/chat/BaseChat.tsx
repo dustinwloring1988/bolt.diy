@@ -289,6 +289,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const onApiKeysChange = (providerName: string, apiKey: string) => {
       const sequence = (apiKeyFetchSequence.current.get(providerName) ?? 0) + 1;
       apiKeyFetchSequence.current.set(providerName, sequence);
+      setModelList((prevModels) => prevModels.filter((model) => model.provider !== providerName));
 
       const newApiKeys = { ...getApiKeysFromCookies(), ...apiKeys, [providerName]: apiKey };
       setApiKeys(newApiKeys);

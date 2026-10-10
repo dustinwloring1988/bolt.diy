@@ -84,6 +84,7 @@ export const supabaseConnection = atom<SupabaseConnectionState>(initialState);
 
 let connectionRevision = 0;
 let apiKeyRequestRevision = 0;
+let statsRequest: { token: string; revision: number; promise: Promise<void> } | null = null;
 
 export const isConnecting = atom(false);
 export const isFetchingStats = atom(false);
@@ -260,42 +261,58 @@ export async function initializeSupabaseConnection() {
 
 export async function fetchSupabaseStats(token: string, expectedRevision?: number) {
   const revision = expectedRevision ?? connectionRevision;
+
+  if (statsRequest?.token === token && statsRequest.revision === revision) {
+    return statsRequest.promise;
+  }
+
   isFetchingStats.set(true);
 
-  try {
-    // Use the internal API route instead of direct Supabase API call
-    const response = await fetch('/api/supabase', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        token,
-      }),
-    });
+  const request = { token, revision, promise: Promise.resolve() };
 
-    if (!response.ok) {
-      const error = new Error(`Failed to fetch projects (${response.status})`) as Error & { status: number };
-      error.status = response.status;
+  const promise = (async () => {
+    try {
+      // Use the internal API route instead of direct Supabase API call
+      const response = await fetch('/api/supabase', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = new Error(`Failed to fetch projects (${response.status})`) as Error & { status: number };
+        error.status = response.status;
+        throw error;
+      }
+
+      const data = (await response.json()) as any;
+
+      if (revision !== connectionRevision) {
+        return;
+      }
+
+      updateSupabaseConnection({
+        user: data.user,
+        stats: data.stats,
+      });
+    } catch (error) {
+      console.error('Failed to fetch Supabase stats:', error);
       throw error;
+    } finally {
+      if (statsRequest === request) {
+        statsRequest = null;
+        isFetchingStats.set(false);
+      }
     }
+  })();
+  request.promise = promise;
+  statsRequest = request;
 
-    const data = (await response.json()) as any;
-
-    if (revision !== connectionRevision) {
-      return;
-    }
-
-    updateSupabaseConnection({
-      user: data.user,
-      stats: data.stats,
-    });
-  } catch (error) {
-    console.error('Failed to fetch Supabase stats:', error);
-    throw error;
-  } finally {
-    isFetchingStats.set(false);
-  }
+  return promise;
 }
 
 export async function fetchProjectApiKeys(projectId: string, token: string) {

@@ -102,23 +102,38 @@ async function askChoice(question, min, max) {
 
 function envValue(value, key) {
   if (key === 'AWS_BEDROCK_CONFIG') {
-    let config;
+    let parsed;
 
     try {
-      config = JSON.stringify(JSON.parse(value));
+      parsed = JSON.parse(value);
     } catch {
       throw new Error('Amazon Bedrock credentials must be valid JSON.');
     }
 
-    return `'${config.replace(/'/g, '\\u0027')}'`;
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed) ||
+      !['region', 'accessKeyId', 'secretAccessKey'].every(
+        (field) => typeof parsed[field] === 'string' && parsed[field].trim().length > 0,
+      )
+    ) {
+      throw new Error('Amazon Bedrock credentials must include region, accessKeyId, and secretAccessKey.');
+    }
+
+    return `'${JSON.stringify(parsed).replace(/'/g, '\\u0027')}'`;
   }
 
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '')}"`;
 }
 
 async function main() {
-  if (!input.isTTY) {
-    throw new Error('The setup wizard requires an interactive terminal.');
+  const ciEnvironment = ['CI', 'GITHUB_ACTIONS', 'TRAVIS', 'JENKINS_URL', 'CIRCLECI'].some(
+    (key) => Boolean(process.env[key]),
+  );
+
+  if (!input.isTTY || ciEnvironment) {
+    throw new Error('The setup wizard requires an interactive terminal and cannot run in CI.');
   }
 
   console.log('bolt.diy Setup Wizard\n\nSelect an AI provider:');
@@ -167,6 +182,11 @@ async function main() {
     .filter((line, index) => line || index < lines.length - 1)
     .join('\n')
     .trimEnd()}\n`;
+  try {
+    await chmod(envPath, 0o600);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   await writeFile(envPath, content, { encoding: 'utf8', mode: 0o600 });
   await chmod(envPath, 0o600);
   console.log('\nSetup complete. Restart the development server to load the new settings. Connect Supabase in the app settings.');

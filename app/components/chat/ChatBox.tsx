@@ -298,7 +298,6 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             <ClientOnly>
               {() => (
                 <ModelSelector
-                  key={props.provider?.name}
                   model={props.model}
                   setModel={props.setModel}
                   modelList={props.modelList}

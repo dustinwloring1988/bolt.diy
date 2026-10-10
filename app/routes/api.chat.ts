@@ -18,7 +18,7 @@ import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/c
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
 import { checkRateLimit, withSecurity } from '~/lib/security';
-import { MCPService } from '~/lib/services/mcpService';
+import { MCPService, type MCPConfig } from '~/lib/services/mcpService';
 import type { ContextAnnotation, ProgressAnnotation } from '~/types/context';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { IProviderSetting } from '~/types/model';
@@ -116,6 +116,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     webSearchEnabled,
     webSearchProvider,
     enabledSkills,
+    mcpConfig,
   } = await request.json<{
     messages: Messages;
     files: any;
@@ -135,6 +136,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     webSearchEnabled?: boolean;
     webSearchProvider?: 'exa' | 'duckduckgo';
     enabledSkills?: Array<{ id: string; name: string; content: string }>;
+    mcpConfig?: MCPConfig;
   }>();
 
   const cookieHeader = request.headers.get('Cookie');
@@ -156,7 +158,13 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
   let progressCounter: number = 1;
 
   try {
-    const mcpService = MCPService.getInstance();
+    const requestMcpService = mcpConfig ? new MCPService() : null;
+    const mcpService = requestMcpService ?? MCPService.getInstance();
+
+    if (requestMcpService) {
+      await requestMcpService.updateConfig(mcpConfig!);
+    }
+
     const totalMessageContent = messages.reduce((acc, message) => acc + getMessageText(message), '');
     logger.debug(`Total message length: ${totalMessageContent.split(' ').length}, words`);
 
@@ -423,7 +431,21 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             }
           : {};
 
-        const allTools = { ...mcpTools, ...webTools };
+        const registeredWebTools: Record<string, (typeof webTools)[keyof typeof webTools]> = {};
+        const webToolNames = new Set<string>();
+
+        for (const [name, tool] of Object.entries(webTools)) {
+          let registeredName = name;
+
+          while (mcpTools[registeredName] || registeredWebTools[registeredName]) {
+            registeredName = `bolt_${registeredName}`;
+          }
+
+          registeredWebTools[registeredName] = tool;
+          webToolNames.add(registeredName);
+        }
+
+        const allTools = { ...mcpTools, ...registeredWebTools };
         const hasTools = Object.keys(allTools).length > 0;
 
         const stepLimit = Math.max(maxLLMSteps ?? 1, hasTools && webSearchEnabled ? 2 : 1);
@@ -461,9 +483,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
              * Web tools (web_search, web_browse) have execute() and run automatically;
              * only route MCP tools through mcpService for the approval/execution round-trip.
              */
-            const WEB_TOOL_NAMES = new Set(['web_search', 'web_browse']);
             toolCalls.forEach((toolCall) => {
-              if (!WEB_TOOL_NAMES.has(toolCall.toolName || '')) {
+              if (!webToolNames.has(toolCall.toolName || '')) {
                 mcpService.processToolCall(toolCall, writer);
               }
             });
@@ -612,6 +633,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
        */
       onEnd: () => {
         // no-op: stream is managed by merged consumer
+      },
+      onFinish: async () => {
+        await requestMcpService?.close();
       },
       onError: (error: any) => {
         return toClientErrorMessage(error);

@@ -300,6 +300,9 @@ export const ModelSelector = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-controls="model-listbox"
+        aria-haspopup="listbox"
         className={classNames(
           'flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs',
           'bg-bolt-elements-item-backgroundDefault text-bolt-elements-item-contentDefault',
@@ -492,8 +495,16 @@ export const ModelSelector = ({
                   <input
                     ref={searchInputRef}
                     type="text"
+                    role="combobox"
+                    aria-label="Search models"
+                    aria-controls="model-listbox"
+                    aria-expanded={isOpen}
+                    aria-activedescendant={focusedModelIndex >= 0 ? `model-option-${focusedModelIndex}` : undefined}
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setFocusedModelIndex(-1);
+                    }}
                     placeholder="Search models..."
                     className={classNames(
                       'w-full pl-9 pr-8 py-2 rounded-md text-sm',
@@ -512,6 +523,7 @@ export const ModelSelector = ({
                       onClick={(e) => {
                         e.stopPropagation();
                         setSearchQuery('');
+                        setFocusedModelIndex(-1);
                         searchInputRef.current?.focus();
                       }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-bolt-elements-background-depth-2 transition-colors"
@@ -540,7 +552,12 @@ export const ModelSelector = ({
               </div>
 
               {/* Models List */}
-              <div className="flex-1 overflow-y-auto p-2.5 space-y-1">
+              <div
+                id="model-listbox"
+                role="listbox"
+                aria-label="Models"
+                className="flex-1 overflow-y-auto p-2.5 space-y-1"
+              >
                 {modelLoading === 'all' ||
                 (Array.isArray(modelLoading)
                   ? modelLoading.includes(selectedProvider?.name ?? '')
@@ -569,6 +586,9 @@ export const ModelSelector = ({
                       return (
                         <div
                           key={m.name}
+                          id={`model-option-${index}`}
+                          role="option"
+                          aria-selected={isSelected}
                           ref={(el) => {
                             modelOptionsRef.current[index] = el;
                           }}

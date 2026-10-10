@@ -4,6 +4,28 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { convertToModelMessages, type ToolSet, type UIMessage, type UIMessageStreamWriter } from 'ai';
 import { z } from 'zod';
 import {
+  mcpServerConfigSchema,
+  type MCPConfig,
+  type MCPServerConfig,
+  type STDIOServerConfig,
+  type SSEServerConfig,
+  type StreamableHTTPServerConfig,
+} from './mcpConfig';
+export {
+  mcpConfigSchema,
+  mcpServerConfigSchema,
+  sseServerConfigSchema,
+  stdioServerConfigSchema,
+  streamableHTTPServerConfigSchema,
+} from './mcpConfig';
+export type {
+  MCPConfig,
+  MCPServerConfig,
+  STDIOServerConfig,
+  SSEServerConfig,
+  StreamableHTTPServerConfig,
+} from './mcpConfig';
+import {
   getToolCallId,
   getToolInput,
   getToolName,
@@ -23,57 +45,6 @@ import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('mcp-service');
 
-export const stdioServerConfigSchema = z
-  .object({
-    type: z.enum(['stdio']).optional(),
-    command: z.string().min(1, 'Command cannot be empty'),
-    args: z.array(z.string()).optional(),
-    cwd: z.string().optional(),
-    env: z.record(z.string(), z.string()).optional(),
-  })
-  .transform((data) => ({
-    ...data,
-    type: 'stdio' as const,
-  }));
-export type STDIOServerConfig = z.infer<typeof stdioServerConfigSchema>;
-
-export const sseServerConfigSchema = z
-  .object({
-    type: z.enum(['sse']).optional(),
-    url: z.string().url('URL must be a valid URL format'),
-    headers: z.record(z.string(), z.string()).optional(),
-  })
-  .transform((data) => ({
-    ...data,
-    type: 'sse' as const,
-  }));
-export type SSEServerConfig = z.infer<typeof sseServerConfigSchema>;
-
-export const streamableHTTPServerConfigSchema = z
-  .object({
-    type: z.enum(['streamable-http']).optional(),
-    url: z.string().url('URL must be a valid URL format'),
-    headers: z.record(z.string(), z.string()).optional(),
-  })
-  .transform((data) => ({
-    ...data,
-    type: 'streamable-http' as const,
-  }));
-
-export type StreamableHTTPServerConfig = z.infer<typeof streamableHTTPServerConfigSchema>;
-
-export const mcpServerConfigSchema = z.union([
-  stdioServerConfigSchema,
-  sseServerConfigSchema,
-  streamableHTTPServerConfigSchema,
-]);
-export type MCPServerConfig = z.infer<typeof mcpServerConfigSchema>;
-
-export const mcpConfigSchema = z.object({
-  mcpServers: z.record(z.string(), mcpServerConfigSchema),
-});
-export type MCPConfig = z.infer<typeof mcpConfigSchema>;
-
 export type MCPClient = {
   tools: () => Promise<ToolSet>;
   close: () => Promise<void>;
@@ -89,6 +60,17 @@ export type ToolCall = {
 };
 
 export type MCPServerTools = Record<string, MCPServer>;
+
+export function sanitizeMcpServerTools(serverTools: MCPServerTools): MCPServerTools {
+  return Object.fromEntries(
+    Object.entries(serverTools).map(([name, server]) => {
+      const config = server.config;
+      const safeConfig = config.type === 'stdio' ? { ...config, env: undefined } : { ...config, headers: undefined };
+
+      return [name, { ...server, config: safeConfig }];
+    }),
+  );
+}
 
 export type MCPServerAvailable = {
   status: 'available';
@@ -169,6 +151,14 @@ export class MCPService {
     await this._createClients();
 
     return this._mcpToolsPerServer;
+  }
+
+  async close(): Promise<void> {
+    await this._closeClients();
+    this._tools = {};
+    this._toolsWithoutExecute = {};
+    this._mcpToolsPerServer = {};
+    this._toolNamesToServerNames.clear();
   }
 
   private async _createStreamableHTTPClient(

@@ -112,7 +112,7 @@ export function useSupabaseConnection() {
     setIsDropdownOpen(false);
   };
 
-  const selectProject = async (projectId: string) => {
+  const selectProject = (projectId: string) => {
     const currentState = supabaseConnection.get();
 
     let projectData = undefined;
@@ -126,17 +126,7 @@ export function useSupabaseConnection() {
       project: projectData,
     });
 
-    if (projectId && (currentState.token || currentState.isConnected)) {
-      try {
-        await fetchProjectApiKeys(projectId, currentState.token);
-        toast.success('Project selected successfully');
-      } catch (error) {
-        console.error('Failed to fetch API keys:', error);
-        toast.error('Selected project but failed to fetch API keys');
-      }
-    } else {
-      toast.success('Project selected successfully');
-    }
+    toast.success('Project selected successfully');
 
     setIsDropdownOpen(false);
   };

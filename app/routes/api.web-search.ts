@@ -22,10 +22,12 @@ const FETCH_HEADERS = {
 };
 
 const MAX_CONTENT_LENGTH = 8000;
+const MAX_HTML_EXTRACTION_LENGTH = 200_000;
 const MAX_REDIRECTS = 5;
 const MAX_RESPONSE_BYTES = 1_000_000;
 
 async function fetchPinnedNodeUrl(input: string, timeoutMs: number): Promise<Response> {
+  const startedAt = Date.now();
   const url = new URL(input);
 
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
@@ -53,6 +55,11 @@ async function fetchPinnedNodeUrl(input: string, timeoutMs: number): Promise<Res
   }
 
   const requestModule = url.protocol === 'https:' ? https : http;
+  const requestTimeoutMs = timeoutMs - (Date.now() - startedAt);
+
+  if (requestTimeoutMs <= 0) {
+    throw new DOMException('Request timed out', 'TimeoutError');
+  }
 
   const lookupPinned = (
     _requestedHostname: string,
@@ -65,7 +72,7 @@ async function fetchPinnedNodeUrl(input: string, timeoutMs: number): Promise<Res
       url,
       {
         headers: FETCH_HEADERS,
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(requestTimeoutMs),
         family: target.family,
         lookup: lookupPinned as never,
         ...(hostname.includes(':') || /^\d+(?:\.\d+){3}$/.test(hostname) ? {} : { servername: hostname }),
@@ -219,7 +226,12 @@ interface ExaSearchResult {
   results: Array<{ title: string; url: string; description: string }>;
 }
 
-async function exaSearch(query: string, numResults = 8): Promise<ExaSearchResult> {
+function withRequestTimeout(timeoutMs: number, requestSignal?: AbortSignal): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return requestSignal ? AbortSignal.any([requestSignal, timeoutSignal]) : timeoutSignal;
+}
+
+async function exaSearch(query: string, numResults = 8, requestSignal?: AbortSignal): Promise<ExaSearchResult> {
   const payload = {
     jsonrpc: '2.0',
     id: 1,
@@ -243,7 +255,7 @@ async function exaSearch(query: string, numResults = 8): Promise<ExaSearchResult
       Accept: 'application/json, text/event-stream',
     },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(25_000),
+    signal: withRequestTimeout(25_000, requestSignal),
   });
 
   if (!res.ok) {
@@ -397,12 +409,15 @@ function parseDuckDuckGoResults(html: string): Array<{ title: string; url: strin
   return results;
 }
 
-async function duckduckgoSearch(query: string): Promise<Array<{ title: string; url: string; description: string }>> {
+async function duckduckgoSearch(
+  query: string,
+  requestSignal?: AbortSignal,
+): Promise<Array<{ title: string; url: string; description: string }>> {
   const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
 
   const res = await fetch(ddgUrl, {
     headers: FETCH_HEADERS,
-    signal: AbortSignal.timeout(10_000),
+    signal: withRequestTimeout(10_000, requestSignal),
   });
 
   if (!res.ok) {
@@ -421,20 +436,77 @@ async function duckduckgoSearch(query: string): Promise<Array<{ title: string; u
  * Better than a simple regex strip — removes boilerplate sections and normalises whitespace.
  */
 function htmlToText(html: string): string {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
-    .replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, '')
-    .replace(/<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>/gi, '')
-    .replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, '')
-    .replace(/<aside\b[^<]*(?:(?!<\/aside>)<[^<]*)*<\/aside>/gi, '')
-    .replace(/<figure\b[^<]*(?:(?!<\/figure>)<[^<]*)*<\/figure>/gi, '')
-    .replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, '')
-    .replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, '\n\n$2\n')
-    .replace(/<(p|div|section|article|main|li)[^>]*>/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
+  const input = html.slice(0, MAX_RESPONSE_BYTES);
+  const removedTags = new Set(['script', 'style', 'noscript', 'nav', 'header', 'footer', 'aside', 'figure', 'form']);
+  const blockTags = new Set(['p', 'div', 'section', 'article', 'main', 'li']);
+
+  let text = '';
+  let index = 0;
+  let skippedTag: string | null = null;
+  let skippedDepth = 0;
+
+  while (index < input.length) {
+    const tagStart = input.indexOf('<', index);
+
+    if (tagStart === -1) {
+      if (!skippedTag) {
+        text += input.slice(index);
+      }
+
+      break;
+    }
+
+    if (!skippedTag) {
+      text += input.slice(index, tagStart);
+    }
+
+    const tagEnd = input.indexOf('>', tagStart + 1);
+
+    if (tagEnd === -1) {
+      if (!skippedTag) {
+        text += input.slice(tagStart);
+      }
+
+      break;
+    }
+
+    const rawTag = input.slice(tagStart + 1, tagEnd);
+    const isClosing = rawTag.startsWith('/');
+    const nameStart = isClosing ? 1 : 0;
+
+    let nameEnd = nameStart;
+
+    while (nameEnd < rawTag.length && /[a-z0-9]/i.test(rawTag[nameEnd])) {
+      nameEnd++;
+    }
+
+    const tagName = rawTag.slice(nameStart, nameEnd).toLowerCase();
+
+    if (skippedTag) {
+      if (tagName === skippedTag) {
+        if (isClosing) {
+          skippedDepth--;
+        } else if (!rawTag.endsWith('/')) {
+          skippedDepth++;
+        }
+
+        if (skippedDepth <= 0) {
+          skippedTag = null;
+        }
+      }
+    } else if (removedTags.has(tagName) && !isClosing) {
+      skippedTag = tagName;
+      skippedDepth = 1;
+    } else if (/^h[1-6]$/.test(tagName)) {
+      text += '\n\n';
+    } else if (blockTags.has(tagName) || tagName === 'br') {
+      text += '\n';
+    }
+
+    index = tagEnd + 1;
+  }
+
+  return text
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -447,21 +519,61 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-function extractMeta(html: string, attr: string): string {
-  // name= or property= (for OG tags)
-  const nameMatch = html.match(
-    new RegExp(`<meta[^>]+(?:name|property)=["']${attr}["'][^>]*content=["']([^"']*)["'][^>]*>`, 'i'),
-  );
+function getTagAttribute(tag: string, attribute: string): string {
+  const match = tag.match(new RegExp(`(?:^|\\s)${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
 
-  if (nameMatch) {
-    return nameMatch[1].trim();
+  return (match?.[1] ?? match?.[2] ?? match?.[3] ?? '').trim();
+}
+
+function extractMeta(html: string, attr: string): string {
+  const lowerHtml = html.toLowerCase();
+
+  let index = 0;
+
+  while ((index = lowerHtml.indexOf('<meta', index)) !== -1) {
+    const tagEnd = html.indexOf('>', index + 5);
+
+    if (tagEnd === -1) {
+      return '';
+    }
+
+    const tag = html.slice(index, tagEnd + 1);
+    const property = getTagAttribute(tag, 'name') || getTagAttribute(tag, 'property');
+
+    if (property.toLowerCase() === attr.toLowerCase()) {
+      return getTagAttribute(tag, 'content');
+    }
+
+    index = tagEnd + 1;
   }
 
-  const altMatch = html.match(
-    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:name|property)=["']${attr}["'][^>]*>`, 'i'),
-  );
+  return '';
+}
 
-  return altMatch ? altMatch[1].trim() : '';
+function extractTitle(html: string): string {
+  const lowerHtml = html.toLowerCase();
+  const start = lowerHtml.indexOf('<title');
+
+  if (start === -1) {
+    return '';
+  }
+
+  const openEnd = lowerHtml.indexOf('>', start + 6);
+
+  if (openEnd === -1) {
+    return '';
+  }
+
+  const closeStart = lowerHtml.indexOf('</title', openEnd + 1);
+
+  if (closeStart === -1) {
+    return '';
+  }
+
+  return html
+    .slice(openEnd + 1, closeStart)
+    .replace(/<[^>]*>/g, '')
+    .trim();
 }
 
 // ── Route handler ───────────────────────────────────────────────────────────────
@@ -505,10 +617,12 @@ export async function webSearchAction({ request, context }: ActionFunctionArgs) 
       }
 
       const html = await readResponseText(response);
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const title = titleMatch ? titleMatch[1].trim() : '';
-      const description = extractMeta(html, 'description') || extractMeta(html, 'og:description');
-      const content = htmlToText(html);
+      const extractionHtml = html.slice(0, MAX_HTML_EXTRACTION_LENGTH);
+      const title = extractTitle(extractionHtml);
+
+      const description = extractMeta(extractionHtml, 'description') || extractMeta(extractionHtml, 'og:description');
+
+      const content = htmlToText(extractionHtml);
 
       return Response.json({
         success: true,
@@ -538,16 +652,16 @@ export async function webSearchAction({ request, context }: ActionFunctionArgs) 
 
       if (provider === 'exa') {
         try {
-          const exaResult = await exaSearch(query, numResults);
+          const exaResult = await exaSearch(query, numResults, request.signal);
           results = exaResult.results;
         } catch (exaErr) {
           // Fallback to DuckDuckGo if Exa fails
           console.warn('Exa search failed, falling back to DuckDuckGo:', exaErr);
-          results = await duckduckgoSearch(query);
+          results = await duckduckgoSearch(query, request.signal);
           provider = 'duckduckgo';
         }
       } else {
-        results = await duckduckgoSearch(query);
+        results = await duckduckgoSearch(query, request.signal);
       }
 
       return Response.json({

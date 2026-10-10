@@ -163,6 +163,7 @@ const ToggleCard = ({
   >
     <button
       type="button"
+      aria-pressed={selected}
       className="w-full flex items-center gap-3 p-3 text-left bg-transparent hover:bg-bolt-elements-background-depth-2 transition-colors"
       onClick={onClick}
     >
@@ -649,6 +650,8 @@ export function OnboardingModal() {
                                 <button
                                   type="button"
                                   onClick={() => toggleProvider(p.name)}
+                                  aria-label={`${isEnabled ? 'Disable' : 'Enable'} ${p.name}`}
+                                  aria-pressed={isEnabled}
                                   className={classNames(
                                     'relative w-9 h-5 rounded-full transition-colors flex-shrink-0',
                                     isEnabled ? 'bg-purple-500' : 'bg-bolt-elements-borderColor',

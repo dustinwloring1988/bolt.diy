@@ -113,6 +113,22 @@ export default function McpTab() {
       return;
     }
 
+    const placeholderKeys = Object.entries(parsedConfig.mcpServers).flatMap(([serverName, serverConfig]) =>
+      serverConfig.type === 'stdio'
+        ? []
+        : Object.entries(serverConfig.headers ?? {})
+            .filter(([, value]) => /YOUR_[A-Z0-9_]+/i.test(value))
+            .map(([headerName]) => `${serverName}.${headerName}`),
+    );
+
+    if (placeholderKeys.length > 0) {
+      const message = `Replace placeholder credentials before saving: ${placeholderKeys.join(', ')}`;
+      setError(message);
+      toast.error(message);
+
+      return;
+    }
+
     setIsSaving(true);
 
     try {

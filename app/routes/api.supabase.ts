@@ -57,6 +57,11 @@ async function supabaseAction({ request }: ActionFunctionArgs) {
     });
   } catch (error) {
     console.error('Supabase API error:', error);
+
+    if (error instanceof SyntaxError) {
+      return Response.json({ error: 'Invalid JSON request body' }, { status: 400 });
+    }
+
     return Response.json(
       {
         error: error instanceof Error ? error.message : 'Authentication failed',
