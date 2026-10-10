@@ -106,6 +106,8 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 LMSTUDIO_BASE_URL=http://127.0.0.1:1234
 ```
 
+The browser Git proxy supports GitHub, GitLab, Bitbucket, and Codeberg by default. To enable a self-hosted Git service, set `GIT_PROXY_ALLOWED_HOSTS` to a comma-separated list of its HTTPS hostnames, such as `git.example.com`. For safety, cross-host redirects are blocked; use the repository's canonical URL when a Git server redirects between hostnames.
+
 ---
 
 ## Features
