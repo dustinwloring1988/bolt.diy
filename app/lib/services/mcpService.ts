@@ -164,7 +164,7 @@ export class MCPService {
   }
 
   async updateConfig(config: MCPConfig) {
-    logger.debug('updating config', JSON.stringify(config));
+    logger.debug('updating MCP config for servers:', Object.keys(config.mcpServers));
     this._config = config;
     await this._createClients();
 

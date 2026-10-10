@@ -84,7 +84,7 @@ export function AttachmentMenu({
             onSelect={onAttachFile}
           >
             <div className="i-ph:paperclip text-lg"></div>
-            <span>Attach File</span>
+            <span>Attach Image</span>
           </DropdownMenu.Item>
 
           <DropdownMenu.Item

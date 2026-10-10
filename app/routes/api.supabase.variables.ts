@@ -1,13 +1,14 @@
 import type { ActionFunctionArgs } from 'react-router';
+import { getApiKeysFromCookie } from '~/lib/api/cookies';
 import { withSecurity } from '~/lib/security';
 
-async function supabaseVariablesAction({ request, context }: ActionFunctionArgs) {
+async function supabaseVariablesAction({ request }: ActionFunctionArgs) {
   try {
     // Add proper type assertion for the request body
     const body = (await request.json()) as { projectId?: string; token?: string };
     const { projectId } = body;
-    const cloudflareEnv = context?.cloudflare?.env as { SUPABASE_ACCESS_TOKEN?: string } | undefined;
-    const token = body.token || cloudflareEnv?.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN;
+    const cookieToken = getApiKeysFromCookie(request.headers.get('Cookie')).VITE_SUPABASE_ACCESS_TOKEN;
+    const token = body.token || cookieToken;
 
     if (!projectId || !token) {
       return Response.json({ error: 'Project ID and token are required' }, { status: 400 });

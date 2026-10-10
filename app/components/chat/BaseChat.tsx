@@ -141,6 +141,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [isModelLoading, setIsModelLoading] = useState<string | undefined>('all');
     const apiKeyFetchSequence = useRef(new Map<string, number>());
     const allProviderFetchSequence = useRef(0);
+    const apiKeyFetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
     const expoUrl = useStore(expoUrlAtom);
     const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -236,7 +237,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       }
     }, [providerList, provider]);
 
-    const onApiKeysChange = async (providerName: string, apiKey: string) => {
+    const onApiKeysChange = (providerName: string, apiKey: string) => {
       const sequence = (apiKeyFetchSequence.current.get(providerName) ?? 0) + 1;
       apiKeyFetchSequence.current.set(providerName, sequence);
 
@@ -246,26 +247,37 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
 
       setIsModelLoading(providerName);
 
-      let providerModels: ModelInfo[] = [];
+      const pendingFetch = apiKeyFetchTimers.current.get(providerName);
 
-      try {
-        const response = await fetch(`/api/models/${encodeURIComponent(providerName)}`);
-        const data = await response.json();
-        providerModels = (data as { modelList: ModelInfo[] }).modelList;
-      } catch (error) {
-        console.error('Error loading dynamic models for:', providerName, error);
+      if (pendingFetch) {
+        clearTimeout(pendingFetch);
       }
 
-      if (apiKeyFetchSequence.current.get(providerName) !== sequence) {
-        return;
-      }
+      apiKeyFetchTimers.current.set(
+        providerName,
+        setTimeout(async () => {
+          let providerModels: ModelInfo[] = [];
 
-      // Only update models for the specific provider
-      setModelList((prevModels) => {
-        const otherModels = prevModels.filter((model) => model.provider !== providerName);
-        return [...otherModels, ...providerModels];
-      });
-      setIsModelLoading(undefined);
+          try {
+            const response = await fetch(`/api/models/${encodeURIComponent(providerName)}`);
+            const data = await response.json();
+            providerModels = (data as { modelList: ModelInfo[] }).modelList;
+          } catch (error) {
+            console.error('Error loading dynamic models for:', providerName, error);
+          }
+
+          if (apiKeyFetchSequence.current.get(providerName) !== sequence) {
+            return;
+          }
+
+          setModelList((prevModels) => {
+            const otherModels = prevModels.filter((model) => model.provider !== providerName);
+            return [...otherModels, ...providerModels];
+          });
+          setIsModelLoading(undefined);
+          apiKeyFetchTimers.current.delete(providerName);
+        }, 500),
+      );
     };
 
     const startListening = () => {

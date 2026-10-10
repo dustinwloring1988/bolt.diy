@@ -161,7 +161,7 @@ export function useSupabaseConnection() {
     updateToken: (token: string) => updateSupabaseConnection({ ...connection, token }),
     isConnected: !!(connection.user && (connection.token || connection.isConnected)),
     fetchProjectApiKeys: (projectId: string) => {
-      if (connection.token) {
+      if (connection.token || connection.isConnected) {
         return fetchProjectApiKeys(projectId, connection.token);
       }
 

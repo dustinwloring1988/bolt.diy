@@ -1,17 +1,14 @@
 import { getApiKeysFromCookie } from '~/lib/api/cookies';
 import { withSecurity } from '~/lib/security';
 
-async function supabaseUserLoader({ request, context }: { request: Request; context: any }) {
+async function supabaseUserLoader({ request }: { request: Request }) {
   try {
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
     const apiKeys = getApiKeysFromCookie(cookieHeader);
 
     // Try to get Supabase token from various sources
-    const supabaseToken =
-      apiKeys.VITE_SUPABASE_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.SUPABASE_ACCESS_TOKEN ||
-      process.env.SUPABASE_ACCESS_TOKEN;
+    const supabaseToken = apiKeys.VITE_SUPABASE_ACCESS_TOKEN;
 
     if (!supabaseToken) {
       return Response.json({ error: 'Supabase token not found' }, { status: 401 });
@@ -50,7 +47,7 @@ async function supabaseUserLoader({ request, context }: { request: Request; cont
             name: 'Supabase User', // Supabase doesn't provide user name in this endpoint
             email: 'user@supabase.co', // Placeholder
           }
-        : null;
+        : { id: 'supabase-account', name: 'Supabase User', email: '' };
 
     return Response.json({
       user,
@@ -80,7 +77,7 @@ export const loader = withSecurity(supabaseUserLoader, {
   allowedMethods: ['GET'],
 });
 
-async function supabaseUserAction({ request, context }: { request: Request; context: any }) {
+async function supabaseUserAction({ request }: { request: Request }) {
   try {
     const formData = await request.formData();
     const action = formData.get('action');
@@ -90,10 +87,7 @@ async function supabaseUserAction({ request, context }: { request: Request; cont
     const apiKeys = getApiKeysFromCookie(cookieHeader);
 
     // Try to get Supabase token from various sources
-    const supabaseToken =
-      apiKeys.VITE_SUPABASE_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.SUPABASE_ACCESS_TOKEN ||
-      process.env.SUPABASE_ACCESS_TOKEN;
+    const supabaseToken = apiKeys.VITE_SUPABASE_ACCESS_TOKEN;
 
     if (!supabaseToken) {
       return Response.json({ error: 'Supabase token not found' }, { status: 401 });
@@ -129,7 +123,7 @@ async function supabaseUserAction({ request, context }: { request: Request; cont
               name: 'Supabase User',
               email: 'user@supabase.co',
             }
-          : null;
+          : { id: 'supabase-account', name: 'Supabase User', email: '' };
 
       return Response.json({
         user,

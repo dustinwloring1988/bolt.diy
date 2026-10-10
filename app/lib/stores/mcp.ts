@@ -4,6 +4,7 @@ import { mcpServerConfigSchema, type MCPConfig, type MCPServerTools } from '~/li
 const MCP_SETTINGS_KEY = 'mcp_settings';
 const POSTHOG_SESSION_TOKEN_KEY = 'posthog_mcp_token';
 const POSTHOG_SERVER_ID = 'posthog';
+const POSTHOG_SERVER_URL = 'https://mcp.posthog.com/mcp';
 const isBrowser = typeof window !== 'undefined';
 
 type MCPSettings = {
@@ -98,11 +99,12 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
     try {
       set(() => ({ isUpdatingConfig: true }));
 
-      const serverTools = await updateServerConfig(newSettings.mcpConfig);
+      const safeSettings = sanitizePostHogSettings(newSettings);
+      const serverTools = await updateServerConfig(safeSettings.mcpConfig);
 
-      persistSettings(newSettings);
+      persistSettings(safeSettings);
 
-      set(() => ({ settings: newSettings, serverTools }));
+      set(() => ({ settings: safeSettings, serverTools }));
     } catch (error) {
       throw error;
     } finally {
@@ -134,19 +136,67 @@ function restorePostHogSessionToken(settings: MCPSettings) {
   if (server && server.type !== 'stdio') {
     const headers = 'headers' in server ? (server.headers ?? {}) : {};
     const legacyAuthorization = headers.Authorization;
-    const sessionToken = sessionStorage.getItem(POSTHOG_SESSION_TOKEN_KEY);
-    const token = sessionToken || (legacyAuthorization?.startsWith('Bearer ') ? legacyAuthorization.slice(7) : '');
+    const token = server.url === POSTHOG_SERVER_URL ? getStoredPostHogToken(server.url) : '';
+    const legacyToken = legacyAuthorization?.startsWith('Bearer ') ? legacyAuthorization.slice(7) : '';
+    const safeToken = token || (server.url === POSTHOG_SERVER_URL ? legacyToken : '');
 
-    if (token) {
-      sessionStorage.setItem(POSTHOG_SESSION_TOKEN_KEY, token);
+    if (safeToken) {
+      storePostHogToken(server.url, safeToken);
       settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID] = {
         ...server,
-        headers: { ...headers, Authorization: `Bearer ${token}` },
+        headers: { ...headers, Authorization: `Bearer ${safeToken}` },
       };
     } else {
-      delete settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID];
+      const safeHeaders = { ...headers };
+
+      delete safeHeaders.Authorization;
+      settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID] = { ...server, headers: safeHeaders };
+
+      if (server.url !== POSTHOG_SERVER_URL) {
+        sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
+      }
     }
   }
+}
+
+function getStoredPostHogToken(serverUrl: string): string {
+  const stored = sessionStorage.getItem(POSTHOG_SESSION_TOKEN_KEY);
+
+  if (!stored) {
+    return '';
+  }
+
+  try {
+    const value = JSON.parse(stored) as { url?: string; token?: string };
+    return value.url === serverUrl && typeof value.token === 'string' ? value.token : '';
+  } catch {
+    // Accept a legacy token only when restoring the known first-party PostHog URL.
+    return serverUrl === POSTHOG_SERVER_URL ? stored : '';
+  }
+}
+
+function storePostHogToken(serverUrl: string, token: string) {
+  sessionStorage.setItem(POSTHOG_SESSION_TOKEN_KEY, JSON.stringify({ url: serverUrl, token }));
+}
+
+function sanitizePostHogSettings(settings: MCPSettings): MCPSettings {
+  const server = settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID];
+
+  if (!server || server.type === 'stdio' || server.url === POSTHOG_SERVER_URL) {
+    return settings;
+  }
+
+  const headers = { ...(server.headers ?? {}) };
+  delete headers.Authorization;
+  sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
+
+  return {
+    ...settings,
+    mcpConfig: {
+      ...settings.mcpConfig,
+      mcpServers: { ...settings.mcpConfig.mcpServers, [POSTHOG_SERVER_ID]: { ...server, headers } },
+    },
+  };
 }
 
 function persistSettings(settings: MCPSettings) {
@@ -162,8 +212,8 @@ function persistSettings(settings: MCPSettings) {
     const authorization = headers.Authorization;
     delete headers.Authorization;
 
-    if (authorization?.startsWith('Bearer ')) {
-      sessionStorage.setItem(POSTHOG_SESSION_TOKEN_KEY, authorization.slice(7));
+    if (posthogServer.url === POSTHOG_SERVER_URL && authorization?.startsWith('Bearer ')) {
+      storePostHogToken(posthogServer.url, authorization.slice(7));
     }
 
     if (Object.keys(headers).length) {

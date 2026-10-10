@@ -1,19 +1,20 @@
 import type { ActionFunctionArgs } from 'react-router';
+import { getApiKeysFromCookie } from '~/lib/api/cookies';
 import { withSecurity } from '~/lib/security';
 import type { SupabaseProject } from '~/types/supabase';
 
-async function supabaseAction({ request, context }: ActionFunctionArgs) {
+async function supabaseAction({ request }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
   try {
     const body = (await request.json()) as { token?: string };
-    const cloudflareEnv = context?.cloudflare?.env as { SUPABASE_ACCESS_TOKEN?: string } | undefined;
-    const token = body.token || cloudflareEnv?.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN;
+    const cookieToken = getApiKeysFromCookie(request.headers.get('Cookie')).VITE_SUPABASE_ACCESS_TOKEN;
+    const token = body.token || cookieToken;
 
     if (!token) {
-      return Response.json({ error: 'Supabase management token is not configured' }, { status: 401 });
+      return Response.json({ error: 'A Supabase personal access token is required' }, { status: 401 });
     }
 
     const projectsResponse = await fetch('https://api.supabase.com/v1/projects', {

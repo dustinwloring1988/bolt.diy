@@ -82,6 +82,8 @@ if (savedCredentials && !initialState.credentials) {
 
 export const supabaseConnection = atom<SupabaseConnectionState>(initialState);
 
+let connectionRevision = 0;
+
 export const isConnecting = atom(false);
 export const isFetchingStats = atom(false);
 export const isFetchingApiKeys = atom(false);
@@ -91,6 +93,8 @@ if (initialState.token && !initialState.stats) {
 }
 
 export function updateSupabaseConnection(connection: Partial<SupabaseConnectionState>) {
+  connectionRevision++;
+
   const currentState = supabaseConnection.get();
 
   if (connection.user !== undefined || connection.token !== undefined) {
@@ -144,14 +148,19 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
 }
 
 export async function initializeSupabaseConnection() {
+  const revision = connectionRevision;
   const currentConnection = supabaseConnection.get();
 
   if (currentConnection.token) {
     try {
-      await fetchSupabaseStats(currentConnection.token);
+      await fetchSupabaseStats(currentConnection.token, revision);
       return;
     } catch (error) {
       const status = (error as Error & { status?: number }).status;
+
+      if (revision !== connectionRevision) {
+        return;
+      }
 
       if (status !== 401 && status !== 403) {
         console.error('Could not revalidate the saved Supabase connection:', error);
@@ -175,30 +184,33 @@ export async function initializeSupabaseConnection() {
   try {
     const response = await fetch('/api/supabase-user');
 
+    if (revision !== connectionRevision) {
+      return;
+    }
+
     if (response.ok) {
       const data = (await response.json()) as { user: SupabaseUser | null; projects: SupabaseProject[] };
 
-      if (data.user) {
-        const accountChanged = currentConnection.user?.id && currentConnection.user.id !== data.user.id;
-        updateSupabaseConnection({
-          user: data.user,
-          token: '',
-          isConnected: true,
-          stats: { projects: data.projects, totalProjects: data.projects.length },
-          ...(accountChanged ? { selectedProjectId: '', credentials: undefined } : {}),
-        });
-
+      if (revision !== connectionRevision) {
         return;
       }
 
+      const user = data.user ??
+        currentConnection.user ?? {
+          id: 'supabase-account',
+          email: '',
+          role: 'Admin',
+          created_at: '',
+          last_sign_in_at: '',
+        };
+
+      const accountChanged = currentConnection.user?.id && currentConnection.user.id !== user.id;
       updateSupabaseConnection({
-        user: null,
+        user,
         token: '',
-        stats: undefined,
-        selectedProjectId: '',
-        isConnected: false,
-        project: undefined,
-        credentials: undefined,
+        isConnected: true,
+        stats: { projects: data.projects, totalProjects: data.projects.length },
+        ...(accountChanged ? { selectedProjectId: '', credentials: undefined } : {}),
       });
 
       return;
@@ -209,7 +221,12 @@ export async function initializeSupabaseConnection() {
       return;
     }
   } catch (error) {
+    if (revision !== connectionRevision) {
+      return;
+    }
+
     console.error('Failed to revalidate Supabase connection:', error);
+
     return;
   }
 
@@ -224,7 +241,8 @@ export async function initializeSupabaseConnection() {
   });
 }
 
-export async function fetchSupabaseStats(token: string) {
+export async function fetchSupabaseStats(token: string, expectedRevision?: number) {
+  const revision = expectedRevision ?? connectionRevision;
   isFetchingStats.set(true);
 
   try {
@@ -246,6 +264,10 @@ export async function fetchSupabaseStats(token: string) {
     }
 
     const data = (await response.json()) as any;
+
+    if (revision !== connectionRevision) {
+      return;
+    }
 
     updateSupabaseConnection({
       user: data.user,

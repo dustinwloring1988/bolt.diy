@@ -14,6 +14,7 @@ import {
   updateWebSearchEnabled,
   updateWebSearchProvider,
   webSearchEnabledStore,
+  webSearchProviderStore,
   updatePromptId,
   type WebSearchProvider,
 } from '~/lib/stores/settings';
@@ -62,7 +63,6 @@ const CONNECTOR_LIST = [
     docsUrl: 'https://supabase.com/dashboard/account/tokens',
     docsLabel: 'Get token →',
     placeholder: 'sbp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-    envKey: 'SUPABASE_ACCESS_TOKEN',
     storeKey: 'Supabase',
   },
   {
@@ -236,19 +236,25 @@ export function OnboardingModal() {
 
     return new Set(
       Object.entries(providers)
-        .filter(([, v]) => v.settings.enabled)
-        .map(([k]) => k),
+        .filter(([, provider]) => provider.settings.enabled)
+        .map(([name]) => name),
     );
   });
 
-  const knownProviderNames = useRef(new Set(Object.keys(allProviders)));
+  const knownEnabledProviders = useRef(
+    new Set(
+      Object.entries(allProviders)
+        .filter(([, config]) => config.settings.enabled)
+        .map(([name]) => name),
+    ),
+  );
 
   // Connector token state
   const [connectorTokens, setConnectorTokens] = useState<Record<string, string>>({});
 
   // Search state
   const [enableSearch, setEnableSearch] = useState(() => webSearchEnabledStore.get());
-  const [searchProvider, setSearchProvider] = useState<WebSearchProvider>('exa');
+  const [searchProvider, setSearchProvider] = useState<WebSearchProvider>(() => webSearchProviderStore.get());
 
   // Prompt state
   const [selectedPromptId, setSelectedPromptId] = useState('default');
@@ -268,14 +274,16 @@ export function OnboardingModal() {
     const currentProviders = Object.entries(allProviders);
 
     const newlyEnabled = currentProviders
-      .filter(([name, config]) => !knownProviderNames.current.has(name) && config.settings.enabled)
+      .filter(([name, config]) => config.settings.enabled && !knownEnabledProviders.current.has(name))
       .map(([name]) => name);
 
     if (newlyEnabled.length) {
       setEnabledProviders((previous) => new Set([...previous, ...newlyEnabled]));
     }
 
-    currentProviders.forEach(([name]) => knownProviderNames.current.add(name));
+    knownEnabledProviders.current = new Set(
+      currentProviders.filter(([, config]) => config.settings.enabled).map(([name]) => name),
+    );
   }, [allProviders]);
 
   useEffect(() => {

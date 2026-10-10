@@ -24,7 +24,7 @@ const providers = [
   { name: 'Z.ai (GLM)', key: 'ZAI_API_KEY' },
 ];
 
-const rl = createInterface({ input, output });
+let rl = createInterface({ input, output });
 
 async function askRequired(question) {
   while (true) {
@@ -36,6 +36,68 @@ async function askRequired(question) {
 
     console.log('Please enter a value.');
   }
+}
+
+async function askSecret(question) {
+  rl.close();
+  output.write(question);
+  input.setRawMode(true);
+  input.setEncoding('utf8');
+  input.resume();
+
+  return new Promise((resolve, reject) => {
+    let answer = '';
+
+    const finish = (error) => {
+      input.off('data', onData);
+      input.off('end', onEnd);
+      input.setRawMode(false);
+      output.write('\n');
+      rl = createInterface({ input, output });
+
+      if (error) reject(error);
+      else resolve(answer.trim());
+    };
+
+    const onData = (chunk) => {
+      for (const character of chunk) {
+        if (character === '\u0003') {
+          finish(new Error('Setup cancelled.'));
+          return;
+        }
+
+        if (character === '\r' || character === '\n') {
+          if (answer) {
+            finish();
+            return;
+          }
+
+          output.write('\nPlease enter a value.\n');
+          output.write(question);
+          continue;
+        }
+
+        if (character === '\u0008' || character === '\u007f') {
+          if (answer.length) {
+            answer = answer.slice(0, -1);
+            output.write('\b \b');
+          }
+
+          continue;
+        }
+
+        if (character >= ' ') {
+          answer += character;
+          output.write('*');
+        }
+      }
+    };
+
+    const onEnd = () => finish(new Error('Input ended before a credential was entered.'));
+
+    input.on('data', onData);
+    input.once('end', onEnd);
+  });
 }
 
 async function askChoice(question, min, max) {
@@ -108,7 +170,7 @@ async function main() {
   const entries = [];
 
   if (selected.key) {
-    entries.push([selected.key, await askRequired(`Enter ${selected.name} API key: `)]);
+    entries.push([selected.key, await askSecret(`Enter ${selected.name} API key: `)]);
   }
 
   if (await askYesNo('Configure Supabase?')) {

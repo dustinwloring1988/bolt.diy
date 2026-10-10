@@ -72,12 +72,6 @@ export class PromptLibrary {
     });
   }
   static getPropmtFromLibrary(promptId: string, options: PromptOptions) {
-    const prompt = this.library[promptId];
-
-    if (!prompt) {
-      throw 'Prompt Now Found';
-    }
-
-    return this.library[promptId]?.get(options);
+    return (this.library[promptId] ?? this.library.default).get(options);
   }
 }

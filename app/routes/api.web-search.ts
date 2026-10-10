@@ -12,7 +12,7 @@
 
 import type { ActionFunctionArgs } from 'react-router';
 import { withSecurity } from '~/lib/security';
-import { isAllowedUrl } from '~/utils/url';
+import { isAllowedUrl, isPublicIpAddress } from '~/utils/url';
 
 const FETCH_HEADERS = {
   'User-Agent':
@@ -23,9 +23,126 @@ const FETCH_HEADERS = {
 
 const MAX_CONTENT_LENGTH = 8000;
 const MAX_REDIRECTS = 5;
+const MAX_RESPONSE_BYTES = 1_000_000;
+
+async function fetchPinnedNodeUrl(input: string): Promise<Response> {
+  const url = new URL(input);
+
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+
+  const [{ lookup }, http, https, { Readable: readable }] = await Promise.all([
+    import('node:dns/promises'),
+    import('node:http'),
+    import('node:https'),
+    import('node:stream'),
+  ]);
+
+  const resolvedAddresses = await lookup(hostname, { all: true, verbatim: true });
+
+  const target = resolvedAddresses.find(({ address }) => isPublicIpAddress(address));
+
+  if (!target) {
+    throw new Error('URL hostname did not resolve to a public IP address.');
+  }
+
+  const requestModule = url.protocol === 'https:' ? https : http;
+
+  const lookupPinned = (
+    _requestedHostname: string,
+    _options: unknown,
+    callback: (error: NodeJS.ErrnoException | null, address: string, family: number) => void,
+  ) => callback(null, target.address, target.family);
+
+  return new Promise((resolve, reject) => {
+    const request = requestModule.request(
+      url,
+      {
+        headers: FETCH_HEADERS,
+        signal: AbortSignal.timeout(10_000),
+        family: target.family,
+        lookup: lookupPinned as never,
+        ...(hostname.includes(':') || /^\d+(?:\.\d+){3}$/.test(hostname) ? {} : { servername: hostname }),
+      } as never,
+      (response) => {
+        const headers = new Headers();
+        const status = response.statusCode ?? 502;
+        const hasNoBody = [204, 205, 304].includes(status);
+
+        if (hasNoBody) {
+          response.resume();
+        }
+
+        Object.entries(response.headers).forEach(([name, value]) => {
+          if (value !== undefined) {
+            headers.set(name, Array.isArray(value) ? value.join(', ') : value);
+          }
+        });
+
+        resolve(
+          new Response(hasNoBody ? null : (readable.toWeb(response) as ReadableStream<Uint8Array>), {
+            status,
+            statusText: response.statusMessage,
+            headers,
+          }),
+        );
+      },
+    );
+
+    request.once('error', reject);
+    request.end();
+  });
+}
+
+async function readResponseText(response: Response): Promise<string> {
+  if (!response.body) {
+    return '';
+  }
+
+  const reader = response.body.getReader();
+
+  const decoder = new TextDecoder();
+
+  let totalBytes = 0;
+  let content = '';
+
+  try {
+    while (totalBytes < MAX_RESPONSE_BYTES) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        content += decoder.decode();
+        return content;
+      }
+
+      const remainingBytes = MAX_RESPONSE_BYTES - totalBytes;
+      const chunk = value.byteLength > remainingBytes ? value.subarray(0, remainingBytes) : value;
+      totalBytes += chunk.byteLength;
+      content += decoder.decode(chunk, { stream: true });
+
+      if (chunk.byteLength < value.byteLength) {
+        await reader.cancel();
+        break;
+      }
+
+      if (totalBytes >= MAX_RESPONSE_BYTES) {
+        await reader.cancel();
+        break;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  content += decoder.decode();
+
+  return content;
+}
 
 /** Fetch a public URL without allowing fetch() to follow unchecked redirects. */
-async function fetchPublicUrl(input: string): Promise<{ response: Response; finalUrl: string }> {
+async function fetchPublicUrl(
+  input: string,
+  isCloudflareWorker: boolean,
+): Promise<{ response: Response; finalUrl: string }> {
   let currentUrl = input;
 
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
@@ -33,11 +150,13 @@ async function fetchPublicUrl(input: string): Promise<{ response: Response; fina
       throw new Error('URL is not allowed. Only public HTTP/HTTPS URLs are accepted.');
     }
 
-    const response = await fetch(currentUrl, {
-      headers: FETCH_HEADERS,
-      signal: AbortSignal.timeout(10_000),
-      redirect: 'manual',
-    });
+    const response = isCloudflareWorker
+      ? await fetch(currentUrl, {
+          headers: FETCH_HEADERS,
+          signal: AbortSignal.timeout(10_000),
+          redirect: 'manual',
+        })
+      : await fetchPinnedNodeUrl(currentUrl);
 
     if (![301, 302, 303, 307, 308].includes(response.status)) {
       return { response, finalUrl: currentUrl };
@@ -214,7 +333,7 @@ function parseDuckDuckGoResults(html: string): Array<{ title: string; url: strin
         const uddg = parsed.searchParams.get('uddg');
 
         if (uddg) {
-          finalUrl = decodeURIComponent(uddg);
+          finalUrl = uddg;
         }
       } else if (rawUrl.startsWith('/')) {
         continue;
@@ -321,7 +440,7 @@ function extractMeta(html: string, attr: string): string {
 
 // ── Route handler ───────────────────────────────────────────────────────────────
 
-async function webSearchAction({ request }: ActionFunctionArgs) {
+async function webSearchAction({ request, context }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
@@ -340,7 +459,8 @@ async function webSearchAction({ request }: ActionFunctionArgs) {
         );
       }
 
-      const { response, finalUrl } = await fetchPublicUrl(url);
+      const isCloudflareWorker = Boolean((context as { cloudflare?: unknown }).cloudflare);
+      const { response, finalUrl } = await fetchPublicUrl(url, isCloudflareWorker);
 
       if (!response.ok) {
         return Response.json(
@@ -351,11 +471,13 @@ async function webSearchAction({ request }: ActionFunctionArgs) {
 
       const contentType = response.headers.get('content-type') || '';
 
-      if (!contentType.includes('text/html') && !contentType.includes('text/plain')) {
+      const normalizedContentType = contentType.toLowerCase();
+
+      if (!normalizedContentType.includes('text/html') && !normalizedContentType.includes('text/plain')) {
         return Response.json({ error: 'URL must point to an HTML or text page' }, { status: 400 });
       }
 
-      const html = await response.text();
+      const html = await readResponseText(response);
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
       const title = titleMatch ? titleMatch[1].trim() : '';
       const description = extractMeta(html, 'description') || extractMeta(html, 'og:description');
