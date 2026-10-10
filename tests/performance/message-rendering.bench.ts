@@ -1,43 +1,9 @@
 /**
- * Message rendering and list operation benchmarks.
- * Run with: pnpm run benchmarks
+ * Message content and list operation benchmarks.
+ * Browser rendering is measured with: pnpm run benchmarks:render
  */
 
 import { describe, expect, it } from 'vitest';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-}
-
-function createMessage(index: number, role: 'user' | 'assistant' = 'user'): Message {
-  return {
-    id: `msg-${index}`,
-    role,
-    content: `This is message number ${index} with some content.`,
-    timestamp: Date.now() + index,
-  };
-}
-
-function createMessages(count: number): Message[] {
-  return Array.from({ length: count }, (_, index) => createMessage(index, index % 2 === 0 ? 'user' : 'assistant'));
-}
-
-function renderMessages(messages: Message[], container: HTMLElement) {
-  const fragment = document.createDocumentFragment();
-
-  messages.forEach((message) => {
-    const element = document.createElement('div');
-    element.textContent = message.content;
-    element.setAttribute('data-message-id', message.id);
-    fragment.append(element);
-  });
-
-  container.replaceChildren(fragment);
-  container.getBoundingClientRect();
-}
 
 function medianDuration(operation: () => void, iterations = 20, samples = 25): number {
   for (let index = 0; index < 5; index += 1) {
@@ -56,30 +22,6 @@ function medianDuration(operation: () => void, iterations = 20, samples = 25): n
 
   return durations[Math.floor(durations.length / 2)];
 }
-
-describe('Message Rendering Performance', () => {
-  it('reports median render timings without assuming a single sample ordering', () => {
-    const messages10 = createMessages(10);
-    const messages50 = createMessages(50);
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-
-    let time10: number;
-    let time50: number;
-
-    try {
-      time10 = medianDuration(() => renderMessages(messages10, container));
-      time50 = medianDuration(() => renderMessages(messages50, container));
-    } finally {
-      container.remove();
-    }
-
-    console.log(`Median render (10 messages): ${time10.toFixed(4)}ms`);
-    console.log(`Median render (50 messages): ${time50.toFixed(4)}ms`);
-    expect(Number.isFinite(time10)).toBe(true);
-    expect(Number.isFinite(time50)).toBe(true);
-  });
-});
 
 describe('Message Content Processing', () => {
   const content = `
@@ -119,10 +61,15 @@ And more text after.
 });
 
 describe('Message List Operations', () => {
-  const messages = createMessages(1_000);
+  const messages = Array.from({ length: 1_000 }, (_, index) => ({
+    id: `msg-${index}`,
+    role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
+    content: `This is message number ${index} with some content.`,
+    timestamp: Date.now() + index,
+  }));
 
   it('reports median append and update timings for a 1000 message list', () => {
-    const appendTime = medianDuration(() => [...messages, createMessage(1_001)]);
+    const appendTime = medianDuration(() => [...messages, { id: 'msg-1001', role: 'user' as const, content: 'New', timestamp: Date.now() }]);
 
     const updateTime = medianDuration(() =>
       messages.map((message) => (message.id === 'msg-500' ? { ...message, content: 'Updated content' } : message)),

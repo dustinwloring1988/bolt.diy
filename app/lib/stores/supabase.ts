@@ -116,6 +116,8 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
 
   if (connection.selectedProjectId !== undefined) {
     if (connection.selectedProjectId !== currentState.selectedProjectId) {
+      apiKeyRequestRevision++;
+      isFetchingApiKeys.set(false);
       connection.credentials = undefined;
     }
 

@@ -37,7 +37,14 @@ async function fetchPinnedNodeUrl(input: string, timeoutMs: number): Promise<Res
     import('node:stream'),
   ]);
 
-  const resolvedAddresses = await lookup(hostname, { all: true, verbatim: true });
+  let dnsTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  const resolvedAddresses = await Promise.race([
+    lookup(hostname, { all: true, verbatim: true }),
+    new Promise<never>((_, reject) => {
+      dnsTimeout = setTimeout(() => reject(new DOMException('Request timed out', 'TimeoutError')), timeoutMs);
+    }),
+  ]).finally(() => clearTimeout(dnsTimeout));
 
   const target = resolvedAddresses.find(({ address }) => isPublicIpAddress(address));
 

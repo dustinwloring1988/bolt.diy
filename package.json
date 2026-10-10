@@ -29,6 +29,7 @@
     "test:e2e:report": "playwright show-report",
     "benchmarks": "vitest bench",
     "benchmarks:watch": "vitest bench --watch",
+    "benchmarks:render": "node scripts/benchmark-message-rendering.mjs",
     "perf:test": "vitest --run tests/performance",
     "perf:analyze": "node scripts/analyze-bundle.js",
     "perf:check": "node scripts/check-performance-budgets.js",

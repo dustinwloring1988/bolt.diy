@@ -34,6 +34,22 @@ import { PROVIDER_LIST } from '~/utils/constants';
 
 const TEXTAREA_MIN_HEIGHT = 76;
 
+async function fetchModelList(): Promise<ModelInfo[]> {
+  const response = await fetch('/api/models');
+
+  if (!response.ok) {
+    throw new Error(`Model request failed (${response.status})`);
+  }
+
+  const data = (await response.json()) as { modelList?: unknown };
+
+  if (!Array.isArray(data.modelList)) {
+    throw new Error('Model response did not include a model list');
+  }
+
+  return data.modelList as ModelInfo[];
+}
+
 interface BaseChatProps {
   textareaRef?: React.RefObject<HTMLTextAreaElement | null> | undefined;
   messageRef?: RefCallback<HTMLDivElement> | undefined;
@@ -208,14 +224,11 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         const keySequenceSnapshot = new Map(apiKeyFetchSequence.current);
         setIsModelLoading('all');
 
-        fetch('/api/models')
-          .then((response) => response.json())
-          .then((data) => {
+        fetchModelList()
+          .then((modelList) => {
             if (sequence !== allProviderFetchSequence.current) {
               return;
             }
-
-            const typedData = data as { modelList: ModelInfo[] };
 
             const refreshedProviders = new Set(
               [...apiKeyFetchSequence.current]
@@ -223,7 +236,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 .map(([name]) => name),
             );
             setModelList((currentModels) => [
-              ...typedData.modelList.filter((model) => !refreshedProviders.has(model.provider)),
+              ...modelList.filter((model) => !refreshedProviders.has(model.provider)),
               ...currentModels.filter((model) => refreshedProviders.has(model.provider)),
             ]);
           })
@@ -245,11 +258,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
 
         const sequence = ++allProviderFetchSequence.current;
         setIsModelLoading('all');
-        fetch('/api/models')
-          .then((response) => response.json())
-          .then((data) => {
+        fetchModelList()
+          .then((modelList) => {
             if (sequence === allProviderFetchSequence.current) {
-              setModelList((data as { modelList: ModelInfo[] }).modelList);
+              setModelList(modelList);
             }
           })
           .catch((error) => console.error('Error refreshing models after API key update:', error))

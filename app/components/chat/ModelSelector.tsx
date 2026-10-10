@@ -76,6 +76,7 @@ export const ModelSelector = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(provider);
+  const pendingFallbackProvider = useRef<string | null>(null);
   const [focusedModelIndex, setFocusedModelIndex] = useState(-1);
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<{ left: number; width: number }>({ left: 0, width: 0 });
@@ -117,17 +118,37 @@ export const ModelSelector = ({
     if (providerList.length > 0 && (!provider || !providerList.some((candidate) => candidate.name === provider.name))) {
       const fallback = providerList[0];
       setSelectedProvider(fallback);
+      pendingFallbackProvider.current = fallback.name;
       setProvider?.(fallback);
 
       const firstModel = modelList.find((candidate) => candidate.provider === fallback.name);
 
       if (firstModel) {
         setModel?.(firstModel.name);
+        pendingFallbackProvider.current = null;
       }
 
       return;
     }
   }, [provider, providerList, modelList, setProvider, setModel]);
+
+  useEffect(() => {
+    if (!provider || pendingFallbackProvider.current !== provider.name) {
+      return;
+    }
+
+    const fallbackModel = modelList.find((candidate) => candidate.provider === provider.name);
+
+    if (fallbackModel) {
+      const currentModel = modelList.find((candidate) => candidate.name === model);
+
+      if (currentModel?.provider !== provider.name) {
+        setModel?.(fallbackModel.name);
+      }
+
+      pendingFallbackProvider.current = null;
+    }
+  }, [provider, modelList, model, setModel]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
