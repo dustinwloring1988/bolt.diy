@@ -1,5 +1,7 @@
+import { Buffer } from 'node:buffer';
 import { generateId, type UIMessage } from 'ai';
 import ignore from 'ignore';
+import { getEncoding } from 'istextorbinary';
 import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
@@ -61,9 +63,17 @@ const StarterTemplates: React.FC<StarterTemplatesProps> = ({ importChat }) => {
       const fileContents = filePaths
         .map((filePath) => {
           const { data: content, encoding } = data[filePath];
+
+          const textContent =
+            typeof content === 'string'
+              ? content
+              : content instanceof Uint8Array && getEncoding(Buffer.from(content), { chunkLength: 100 }) !== 'binary'
+                ? new TextDecoder('utf-8', { fatal: true }).decode(content)
+                : '';
+
           return {
             path: filePath,
-            content: encoding === 'utf8' ? content : '',
+            content: encoding === 'utf8' ? content : textContent,
           };
         })
         .filter((f) => f.content);

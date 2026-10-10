@@ -157,12 +157,14 @@
     "shiki": "^4.5.0",
     "unist-util-visit": "^5.1.0",
     "vite-plugin-node-polyfills": "^0.28.0",
+    "web-vitals": "^6.2.3",
     "wrangler": "^4.148.0",
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@blitz/eslint-plugin": "0.1.5",
+    "@changesets/cli": "^3.0.3",
     "@cloudflare/vite-plugin": "^1.63.0",
     "@cloudflare/workers-types": "^5.20261009.1",
     "@electron/notarize": "^3.1.1",
@@ -183,7 +185,6 @@
     "@types/unist": "^3.0.3",
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.3",
-    "changeset": "^0.2.6",
     "concurrently": "^10.0.5",
     "crypto-browserify": "^3.12.1",
     "electron": "^44.5.1",
@@ -204,8 +205,7 @@
     "vite": "^8.3.3",
     "vite-plugin-copy": "^0.1.6",
     "vite-plugin-optimize-css-modules": "^1.4.0",
-    "vitest": "^5.0.3",
-    "web-vitals": "^6.2.3"
+    "vitest": "^5.0.3"
   },
   "pnpm": {
     "overrides": {

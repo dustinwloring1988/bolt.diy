@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { UIMessage } from 'ai';
 import Cookies from 'js-cookie';
-import React, { lazy, Suspense, type RefCallback, useEffect, useState } from 'react';
+import React, { lazy, Suspense, type RefCallback, useEffect, useRef, useState } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
 import { getApiKeysFromCookies } from './APIKeyManager';
 import styles from './BaseChat.module.scss';
@@ -139,6 +139,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
     const [transcript, setTranscript] = useState('');
     const [isModelLoading, setIsModelLoading] = useState<string | undefined>('all');
+    const apiKeyFetchSequence = useRef(new Map<string, number>());
 
     const expoUrl = useStore(expoUrlAtom);
     const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -218,6 +219,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     }, [providerList, provider]);
 
     const onApiKeysChange = async (providerName: string, apiKey: string) => {
+      const sequence = (apiKeyFetchSequence.current.get(providerName) ?? 0) + 1;
+      apiKeyFetchSequence.current.set(providerName, sequence);
+
       const newApiKeys = { ...apiKeys, [providerName]: apiKey };
       setApiKeys(newApiKeys);
       Cookies.set('apiKeys', JSON.stringify(newApiKeys));
@@ -232,6 +236,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         providerModels = (data as { modelList: ModelInfo[] }).modelList;
       } catch (error) {
         console.error('Error loading dynamic models for:', providerName, error);
+      }
+
+      if (apiKeyFetchSequence.current.get(providerName) !== sequence) {
+        return;
       }
 
       // Only update models for the specific provider

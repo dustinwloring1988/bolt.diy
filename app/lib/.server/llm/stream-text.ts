@@ -212,17 +212,19 @@ export async function streamText(props: {
   );
 
   let systemPrompt =
-    PromptLibrary.getPropmtFromLibrary(promptId || 'default', {
-      cwd: WORK_DIR,
-      allowedHtmlElements: allowedHTMLElements,
-      modificationTagName: MODIFICATIONS_TAG_NAME,
-      designScheme,
-      supabase: {
-        isConnected: options?.supabaseConnection?.isConnected || false,
-        hasSelectedProject: options?.supabaseConnection?.hasSelectedProject || false,
-        credentials: options?.supabaseConnection?.credentials || undefined,
-      },
-    }) ?? getSystemPrompt();
+    chatMode === 'build'
+      ? (PromptLibrary.getPropmtFromLibrary(promptId || 'default', {
+          cwd: WORK_DIR,
+          allowedHtmlElements: allowedHTMLElements,
+          modificationTagName: MODIFICATIONS_TAG_NAME,
+          designScheme,
+          supabase: {
+            isConnected: options?.supabaseConnection?.isConnected || false,
+            hasSelectedProject: options?.supabaseConnection?.hasSelectedProject || false,
+            credentials: options?.supabaseConnection?.credentials || undefined,
+          },
+        }) ?? getSystemPrompt())
+      : discussPrompt();
 
   // Inject workstyle commentary guidance for build mode
   if (chatMode === 'build') {
@@ -370,7 +372,7 @@ ${skillsContent}
       apiKeys,
       providerSettings,
     }),
-    system: chatMode === 'build' ? systemPrompt : discussPrompt(),
+    system: systemPrompt,
     ...tokenParams,
     messages: await convertToModelMessages(processedMessages as any),
     ...forwardedOptions,

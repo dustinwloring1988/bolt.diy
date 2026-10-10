@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { MCPConfig, MCPServerTools } from '~/lib/services/mcpService';
 
 const MCP_SETTINGS_KEY = 'mcp_settings';
+const POSTHOG_SESSION_TOKEN_KEY = 'posthog_mcp_token';
+const POSTHOG_SERVER_ID = 'posthog';
 const isBrowser = typeof window !== 'undefined';
 
 type MCPSettings = {
@@ -46,9 +48,27 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
 
       if (savedConfig) {
         try {
-          const settings = JSON.parse(savedConfig) as MCPSettings;
+          const parsed = JSON.parse(savedConfig) as Partial<MCPSettings> | null;
+          const rawServers = parsed?.mcpConfig?.mcpServers;
+
+          const settings: MCPSettings = {
+            maxLLMSteps:
+              typeof parsed?.maxLLMSteps === 'number' && Number.isFinite(parsed.maxLLMSteps)
+                ? parsed.maxLLMSteps
+                : defaultSettings.maxLLMSteps,
+            mcpConfig: {
+              mcpServers:
+                rawServers && typeof rawServers === 'object' && !Array.isArray(rawServers)
+                  ? rawServers
+                  : defaultSettings.mcpConfig.mcpServers,
+            },
+          };
+
+          restorePostHogSessionToken(settings);
+
           const serverTools = await updateServerConfig(settings.mcpConfig);
           set(() => ({ settings, serverTools }));
+          persistSettings(settings);
         } catch (error) {
           console.error('Error parsing saved mcp config:', error);
           set(() => ({
@@ -72,9 +92,7 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
 
       const serverTools = await updateServerConfig(newSettings.mcpConfig);
 
-      if (isBrowser) {
-        localStorage.setItem(MCP_SETTINGS_KEY, JSON.stringify(newSettings));
-      }
+      persistSettings(newSettings);
 
       set(() => ({ settings: newSettings, serverTools }));
     } catch (error) {
@@ -97,6 +115,62 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
     set(() => ({ serverTools }));
   },
 }));
+
+function restorePostHogSessionToken(settings: MCPSettings) {
+  if (!isBrowser) {
+    return;
+  }
+
+  const server = settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID];
+
+  if (server && 'headers' in server) {
+    const headers = server.headers ?? {};
+    const legacyAuthorization = headers.Authorization;
+    const sessionToken = sessionStorage.getItem(POSTHOG_SESSION_TOKEN_KEY);
+    const token = sessionToken || (legacyAuthorization?.startsWith('Bearer ') ? legacyAuthorization.slice(7) : '');
+
+    if (token) {
+      sessionStorage.setItem(POSTHOG_SESSION_TOKEN_KEY, token);
+      settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID] = {
+        ...server,
+        headers: { ...headers, Authorization: `Bearer ${token}` },
+      };
+    } else {
+      delete settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID];
+    }
+  }
+}
+
+function persistSettings(settings: MCPSettings) {
+  if (!isBrowser) {
+    return;
+  }
+
+  const mcpServers = { ...settings.mcpConfig.mcpServers };
+  const posthogServer = mcpServers[POSTHOG_SERVER_ID];
+
+  if (posthogServer && 'headers' in posthogServer) {
+    const headers = { ...posthogServer.headers };
+    const authorization = headers.Authorization;
+    delete headers.Authorization;
+
+    if (authorization?.startsWith('Bearer ')) {
+      sessionStorage.setItem(POSTHOG_SESSION_TOKEN_KEY, authorization.slice(7));
+    }
+
+    if (Object.keys(headers).length) {
+      mcpServers[POSTHOG_SERVER_ID] = { ...posthogServer, headers };
+    } else {
+      const { headers: _headers, ...serverWithoutHeaders } = posthogServer;
+      mcpServers[POSTHOG_SERVER_ID] = serverWithoutHeaders;
+    }
+  } else {
+    sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
+  }
+
+  const persistedSettings = { ...settings, mcpConfig: { ...settings.mcpConfig, mcpServers } };
+  localStorage.setItem(MCP_SETTINGS_KEY, JSON.stringify(persistedSettings));
+}
 
 async function updateServerConfig(config: MCPConfig) {
   const response = await fetch('/api/mcp-update-config', {

@@ -142,12 +142,13 @@ export class StreamingMessageParser {
 
         if (state.insideAction) {
           const closeIndex = input.indexOf(ARTIFACT_ACTION_TAG_CLOSE, i);
-          const restartCandidate = this.#findRestartedArtifact(input, i);
+          const currentAction = state.currentAction;
 
+          /* A file payload may contain artifact markup; do not treat it as a model restart boundary. */
+          const restartCandidate =
+            'type' in currentAction && currentAction.type === 'file' ? -1 : this.#findRestartedArtifact(input, i);
           const restartedArtifactIndex =
             restartCandidate !== -1 && (closeIndex === -1 || restartCandidate < closeIndex) ? restartCandidate : -1;
-
-          const currentAction = state.currentAction;
 
           if (restartedArtifactIndex !== -1) {
             /*

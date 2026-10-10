@@ -10,8 +10,8 @@ async function supabaseUserLoader({ request, context }: { request: Request; cont
     // Try to get Supabase token from various sources
     const supabaseToken =
       apiKeys.VITE_SUPABASE_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.VITE_SUPABASE_ACCESS_TOKEN ||
-      process.env.VITE_SUPABASE_ACCESS_TOKEN;
+      context?.cloudflare?.env?.SUPABASE_ACCESS_TOKEN ||
+      process.env.SUPABASE_ACCESS_TOKEN;
 
     if (!supabaseToken) {
       return Response.json({ error: 'Supabase token not found' }, { status: 401 });
@@ -92,8 +92,8 @@ async function supabaseUserAction({ request, context }: { request: Request; cont
     // Try to get Supabase token from various sources
     const supabaseToken =
       apiKeys.VITE_SUPABASE_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.VITE_SUPABASE_ACCESS_TOKEN ||
-      process.env.VITE_SUPABASE_ACCESS_TOKEN;
+      context?.cloudflare?.env?.SUPABASE_ACCESS_TOKEN ||
+      process.env.SUPABASE_ACCESS_TOKEN;
 
     if (!supabaseToken) {
       return Response.json({ error: 'Supabase token not found' }, { status: 401 });

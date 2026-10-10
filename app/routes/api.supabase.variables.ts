@@ -1,10 +1,12 @@
 import type { ActionFunctionArgs } from 'react-router';
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, context }: ActionFunctionArgs) {
   try {
     // Add proper type assertion for the request body
     const body = (await request.json()) as { projectId?: string; token?: string };
-    const { projectId, token } = body;
+    const { projectId } = body;
+    const cloudflareEnv = context?.cloudflare?.env as { SUPABASE_ACCESS_TOKEN?: string } | undefined;
+    const token = body.token || cloudflareEnv?.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN;
 
     if (!projectId || !token) {
       return Response.json({ error: 'Project ID and token are required' }, { status: 400 });

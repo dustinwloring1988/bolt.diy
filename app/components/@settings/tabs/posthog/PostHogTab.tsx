@@ -21,7 +21,9 @@ export default function PostHogTab() {
     }
   }, [initialize, isInitialized]);
 
-  const isConnected = !!settings.mcpConfig.mcpServers[SERVER_ID];
+  const mcpServers = settings?.mcpConfig?.mcpServers;
+  const safeMcpServers = mcpServers && typeof mcpServers === 'object' ? mcpServers : {};
+  const isConnected = !!safeMcpServers[SERVER_ID];
   const availableTools = server?.status === 'available' ? Object.keys(server.tools).length : 0;
 
   const handleConnect = async (event: FormEvent<HTMLFormElement>) => {
@@ -37,7 +39,7 @@ export default function PostHogTab() {
     const mcpConfig = {
       ...settings.mcpConfig,
       mcpServers: {
-        ...settings.mcpConfig.mcpServers,
+        ...safeMcpServers,
         [SERVER_ID]: {
           type: 'streamable-http' as const,
           url: SERVER_URL,
@@ -48,6 +50,18 @@ export default function PostHogTab() {
 
     try {
       await updateSettings({ ...settings, mcpConfig });
+
+      const connectedServer = useMCPStore.getState().serverTools[SERVER_ID];
+
+      if (connectedServer?.status !== 'available') {
+        toast.error(
+          connectedServer?.status === 'unavailable'
+            ? `PostHog configuration saved, but the connection failed: ${connectedServer.error}`
+            : 'PostHog configuration saved, but the server did not return any connection status',
+        );
+        return;
+      }
+
       setApiKey('');
       toast.success('PostHog connected');
     } catch (error) {
@@ -56,11 +70,11 @@ export default function PostHogTab() {
   };
 
   const handleDisconnect = async () => {
-    const mcpServers = { ...settings.mcpConfig.mcpServers };
-    delete mcpServers[SERVER_ID];
+    const nextMcpServers = { ...safeMcpServers };
+    delete nextMcpServers[SERVER_ID];
 
     try {
-      await updateSettings({ ...settings, mcpConfig: { ...settings.mcpConfig, mcpServers } });
+      await updateSettings({ ...settings, mcpConfig: { ...settings.mcpConfig, mcpServers: nextMcpServers } });
       toast.success('PostHog disconnected');
     } catch (error) {
       toast.error(`Could not disconnect PostHog: ${error instanceof Error ? error.message : String(error)}`);

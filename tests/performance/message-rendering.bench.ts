@@ -25,8 +25,8 @@ function createMessages(count: number): Message[] {
   return Array.from({ length: count }, (_, index) => createMessage(index, index % 2 === 0 ? 'user' : 'assistant'));
 }
 
-function renderMessages(count: number) {
-  createMessages(count).forEach((message) => {
+function renderMessages(messages: Message[]) {
+  messages.forEach((message) => {
     const element = document.createElement('div');
     element.textContent = message.content;
     element.setAttribute('data-message-id', message.id);
@@ -51,8 +51,10 @@ function medianDuration(operation: () => void, iterations = 20, samples = 25): n
 
 describe('Message Rendering Performance', () => {
   it('reports median render timings without assuming a single sample ordering', () => {
-    const time10 = medianDuration(() => renderMessages(10));
-    const time50 = medianDuration(() => renderMessages(50));
+    const messages10 = createMessages(10);
+    const messages50 = createMessages(50);
+    const time10 = medianDuration(() => renderMessages(messages10));
+    const time50 = medianDuration(() => renderMessages(messages50));
 
     console.log(`Median render (10 messages): ${time10.toFixed(4)}ms`);
     console.log(`Median render (50 messages): ${time50.toFixed(4)}ms`);
@@ -101,9 +103,7 @@ describe('Message List Operations', () => {
   it('reports median append and update timings for a 1000 message list', () => {
     const appendTime = medianDuration(() => [...messages, createMessage(1_001)]);
     const updateTime = medianDuration(() =>
-      messages.map((message) =>
-        message.id === 'msg-500' ? { ...message, content: 'Updated content' } : message,
-      ),
+      messages.map((message) => (message.id === 'msg-500' ? { ...message, content: 'Updated content' } : message)),
     );
 
     console.log(`Median append to 1000 items: ${appendTime.toFixed(4)}ms`);

@@ -687,9 +687,14 @@ export const ChatImpl = memo(
 
       previewRepairState.current.attempts += 1;
       previewRepairState.current.fingerprints.add(fingerprint);
-      void sendMessage({} as React.UIEvent, createRepairPrompt(actionAlert, true));
+
+      const repairText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${createRepairPrompt(actionAlert, true)}`;
+      void sendChatMessage({
+        ...createMessage({ role: 'user', text: repairText }),
+        parts: createMessageParts(repairText, []),
+      } as UIMessage);
       workbenchStore.clearAlert();
-    }, [actionAlert, chatChanged, fakeLoading, isLoading, sendMessage]);
+    }, [actionAlert, chatChanged, fakeLoading, isLoading, model, provider.name, sendChatMessage]);
 
     /*
      * Builds a user message carrying its images and uploads. v5 removed

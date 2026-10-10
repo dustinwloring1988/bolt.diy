@@ -179,7 +179,7 @@ export function AttachmentMenu({
                   onSelect={() => document.dispatchEvent(new CustomEvent('open-mcp-settings'))}
                 >
                   <div className="i-ph:gear text-lg"></div>
-                  <span>MCP Settings</span>
+                  <span>MCP tools</span>
                 </DropdownMenu.Item>
               </DropdownMenu.SubContent>
             </DropdownMenu.Portal>

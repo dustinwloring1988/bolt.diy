@@ -83,6 +83,18 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
   const pageErrors = [];
+  await page.addInitScript(() => {
+    window.__BROWSER_LONG_TASKS__ = [];
+
+    if (typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
+      const observer = new PerformanceObserver((list) => {
+        window.__BROWSER_LONG_TASKS__.push(
+          ...list.getEntries().map((entry) => ({ startTime: entry.startTime, duration: entry.duration })),
+        );
+      });
+      observer.observe({ type: 'longtask', buffered: true });
+    }
+  });
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
   const session = await context.newCDPSession(page);
@@ -117,9 +129,7 @@ try {
       .map((entry) => ({ name: entry.name, duration: entry.duration, transferSize: entry.transferSize }))
       .sort((left, right) => right.duration - left.duration)
       .slice(0, 30);
-    const browserLongTasks = performance
-      .getEntriesByType('longtask')
-      .map((entry) => ({ startTime: entry.startTime, duration: entry.duration }));
+    const browserLongTasks = window.__BROWSER_LONG_TASKS__ ?? [];
     const metrics = window.__BOLT_PERFORMANCE__?.monitor?.getMetrics?.() ?? [];
     const appLongTasks = metrics
       .filter((metric) => metric.name === 'main-thread:long-task')

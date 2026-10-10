@@ -1,13 +1,19 @@
 import type { ActionFunction } from 'react-router';
 import type { SupabaseProject } from '~/types/supabase';
 
-export const action: ActionFunction = async ({ request }) => {
+export const action: ActionFunction = async ({ request, context }) => {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
   try {
-    const { token } = (await request.json()) as any;
+    const body = (await request.json()) as { token?: string };
+    const cloudflareEnv = context?.cloudflare?.env as { SUPABASE_ACCESS_TOKEN?: string } | undefined;
+    const token = body.token || cloudflareEnv?.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN;
+
+    if (!token) {
+      return Response.json({ error: 'Supabase management token is not configured' }, { status: 401 });
+    }
 
     const projectsResponse = await fetch('https://api.supabase.com/v1/projects', {
       headers: {

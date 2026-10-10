@@ -96,7 +96,7 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
   if (connection.user !== undefined || connection.token !== undefined) {
     const newUser = connection.user !== undefined ? connection.user : currentState.user;
     const newToken = connection.token !== undefined ? connection.token : currentState.token;
-    connection.isConnected = !!(newUser && newToken);
+    connection.isConnected = connection.isConnected ?? !!(newUser && newToken);
   }
 
   if (connection.selectedProjectId !== undefined) {
@@ -143,13 +143,26 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
   }
 }
 
-export function initializeSupabaseConnection() {
-  // Auto-connect using environment variable if available
-  const envToken = import.meta.env?.VITE_SUPABASE_ACCESS_TOKEN;
+export async function initializeSupabaseConnection() {
+  if (supabaseConnection.get().user) {
+    return;
+  }
 
-  if (envToken && !supabaseConnection.get().token) {
-    updateSupabaseConnection({ token: envToken });
-    fetchSupabaseStats(envToken).catch(console.error);
+  const response = await fetch('/api/supabase-user');
+
+  if (!response.ok) {
+    return;
+  }
+
+  const data = (await response.json()) as { user: SupabaseUser | null; projects: SupabaseProject[] };
+
+  if (data.user) {
+    updateSupabaseConnection({
+      user: data.user,
+      token: '',
+      isConnected: true,
+      stats: { projects: data.projects, totalProjects: data.projects.length },
+    });
   }
 }
 

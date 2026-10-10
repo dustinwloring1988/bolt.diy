@@ -53,7 +53,7 @@ const RECOMMENDED_SERVERS = [
   {
     id: 'deepwiki',
     name: 'DeepWiki',
-    description: 'Search and retrieve Wikipedia content',
+    description: 'Explore and ask questions about GitHub repository documentation',
     url: 'https://mcp.deepwiki.com',
     requiresApiKey: false,
     icon: 'i-ph:book-open',
