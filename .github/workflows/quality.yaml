@@ -67,16 +67,33 @@ jobs:
       - name: Setup and Build
         uses: ./.github/actions/setup-and-build
 
+      - name: Set up matching Chrome and ChromeDriver
+        uses: browser-actions/setup-chrome@v2
+        id: setup-chrome
+        with:
+          install-chromedriver: true
+
+      - name: Use the matching Chrome binary
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/chrome-bin"
+          ln -sf "${{ steps.setup-chrome.outputs.chrome-path }}" "$RUNNER_TEMP/chrome-bin/google-chrome"
+          echo "$RUNNER_TEMP/chrome-bin" >> "$GITHUB_PATH"
+
       - name: Start development server
         run: |
-          pnpm run build
-          pnpm run start &
-          sleep 15
-        env:
-          CI: true
+          pnpm run dockerstart > "$RUNNER_TEMP/accessibility-server.log" 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:5173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/accessibility-server.log"
+          exit 1
 
       - name: Run accessibility tests with axe
-        run: npx @axe-core/cli http://localhost:5173 --exit
+        run: npx @axe-core/cli http://localhost:5173 --exit --chromedriver-path "${{ steps.setup-chrome.outputs.chromedriver-path }}"
 
   performance-audit:
     name: Performance Audit
@@ -92,9 +109,15 @@ jobs:
 
       - name: Start server for Lighthouse
         run: |
-          pnpm run build
-          pnpm run start &
-          sleep 20
+          pnpm run dockerstart > "$RUNNER_TEMP/lighthouse-server.log" 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:5173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/lighthouse-server.log"
+          exit 1
 
       - name: Run Lighthouse audit
         run: npx lighthouse http://localhost:5173 --output-path=./lighthouse-report.html --output=html --chrome-flags="--headless --no-sandbox"
