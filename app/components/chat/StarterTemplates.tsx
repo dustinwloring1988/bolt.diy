@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
 import { useGit } from '~/lib/hooks/useGit';
-import { useChatHistory } from '~/lib/persistence';
 import { createMessage } from '~/lib/persistence/messageMigration';
 import type { Template } from '~/types/template';
 import { STARTER_TEMPLATES } from '~/utils/constants';
@@ -35,20 +34,13 @@ const IGNORE_PATTERNS = [
 const ig = ignore().add(IGNORE_PATTERNS);
 
 interface StarterTemplatesProps {
-  importChat?: (description: string, messages: UIMessage[]) => Promise<void>;
+  importChat: (description: string, messages: UIMessage[]) => Promise<void>;
 }
 
-const StarterTemplates: React.FC<StarterTemplatesProps> = ({ importChat: importChatProp }) => {
-  const { importChat: importChatFromHistory } = useChatHistory();
+const StarterTemplates: React.FC<StarterTemplatesProps> = ({ importChat }) => {
   const { ready: gitReady, gitClone } = useGit();
   const [loading, setLoading] = useState(false);
   const [loadingTemplate, setLoadingTemplate] = useState<string | null>(null);
-
-  /*
-   * Prefer the prop passed from Chat (which has navigate wired up) — fall
-   * back to useChatHistory's importChat if not provided.
-   */
-  const importChat = importChatProp ?? importChatFromHistory;
 
   const handleTemplateClick = async (template: Template) => {
     if (!gitReady) {
@@ -65,20 +57,22 @@ const StarterTemplates: React.FC<StarterTemplatesProps> = ({ importChat: importC
       const { workdir, data } = await gitClone(repoUrl);
 
       const filePaths = Object.keys(data).filter((p) => !ig.ignores(p));
-      const textDecoder = new TextDecoder('utf-8');
 
       const fileContents = filePaths
         .map((filePath) => {
           const { data: content, encoding } = data[filePath];
           return {
             path: filePath,
-            content: encoding === 'utf8' ? content : content instanceof Uint8Array ? textDecoder.decode(content) : '',
+            content: encoding === 'utf8' ? content : '',
           };
         })
         .filter((f) => f.content);
 
       const commands = await detectProjectCommands(fileContents);
       const commandsMessage = createCommandsMessage(commands);
+
+      const escapeAttribute = (value: string) =>
+        value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
       const filesMessage = createMessage({
         role: 'assistant',
@@ -88,7 +82,7 @@ const StarterTemplates: React.FC<StarterTemplatesProps> = ({ importChat: importC
 ${fileContents
   .map(
     (file) =>
-      `<boltAction type="file" filePath="${file.path}">
+      `<boltAction type="file" filePath="${escapeAttribute(file.path)}">
 ${escapeBoltTags(file.content)}
 </boltAction>`,
   )

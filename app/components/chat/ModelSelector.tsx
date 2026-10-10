@@ -164,26 +164,13 @@ export const ModelSelector = ({
     [setModel, setProvider, selectedProvider],
   );
 
-  const handleProviderClick = useCallback(
-    (p: ProviderInfo) => {
-      setSelectedProvider(p);
-      setSearchQuery('');
-      setFocusedModelIndex(-1);
-      setShowApiKeyInput(false); // Reset API key input when switching providers
-
-      // Auto-select first model if current model is not from this provider
-      const currentModelFromProvider = modelList.find((m) => m.provider === p.name && m.name === model);
-
-      if (!currentModelFromProvider) {
-        const firstModel = modelList.find((m) => m.provider === p.name);
-
-        if (firstModel) {
-          // Don't close dropdown, just update preview
-        }
-      }
-    },
-    [modelList, model],
-  );
+  const handleProviderClick = useCallback((p: ProviderInfo) => {
+    setSelectedProvider(p);
+    setSearchQuery('');
+    setFocusedModelIndex(-1);
+    setShowApiKeyInput(false); // Reset API key input when switching providers
+    setShowFreeModelsOnly(false);
+  }, []);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!isOpen) {

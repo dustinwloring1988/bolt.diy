@@ -13,6 +13,7 @@ import { discussPrompt } from '~/lib/common/prompts/discuss-prompt';
 import { getSystemPrompt } from '~/lib/common/prompts/prompts';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
+import { AVAILABLE_SKILLS } from '~/lib/stores/skills';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { IProviderSetting } from '~/types/model';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
@@ -231,10 +232,13 @@ export async function streamText(props: {
   // Inject enabled skills into system prompt
   if (enabledSkills && enabledSkills.length > 0) {
     const skillsContent = enabledSkills
+      .map(({ id }) => AVAILABLE_SKILLS.find((skill) => skill.id === id))
+      .filter((skill): skill is (typeof AVAILABLE_SKILLS)[number] => Boolean(skill))
       .map((skill) => `<skill name="${skill.name}">\n${skill.content}\n</skill>`)
       .join('\n\n');
 
-    systemPrompt = `${systemPrompt}
+    if (skillsContent) {
+      systemPrompt = `${systemPrompt}
 
 <enabled_skills>
 The following skills have been enabled by the user. Follow their guidance when relevant to the current task:
@@ -242,6 +246,7 @@ The following skills have been enabled by the user. Follow their guidance when r
 ${skillsContent}
 </enabled_skills>
 `;
+    }
   }
 
   if (chatMode === 'build' && contextFiles && contextOptimization) {

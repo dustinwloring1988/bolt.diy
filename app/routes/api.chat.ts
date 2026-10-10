@@ -332,14 +332,13 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               web_search: {
                 description:
                   'Search the web using Exa (neural search, free) or DuckDuckGo (keyword search). Use this when the user prompt asks for current information, research, sources, or facts that may have changed. Returns up to 10 results with title, URL, and snippet. Browse relevant result pages with web_browse when their contents are needed to answer.',
-                parameters: z.object({
+                inputSchema: z.object({
                   query: z.string().describe('The search query'),
                   numResults: z.number().min(1).max(20).optional().describe('Number of results (default: 8)'),
                 }),
                 execute: async ({ query, numResults }: { query: string; numResults?: number }) => {
                   try {
-                    // Use relative URL so it works in any environment (dev, prod, docker)
-                    const res = await fetch('/api/web-search', {
+                    const res = await fetch(new URL('/api/web-search', request.url), {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ query, provider: webSearchProvider || 'exa', numResults }),
@@ -370,12 +369,12 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               web_browse: {
                 description:
                   'Fetch and read the text content of a public web page. Returns the page title, description, and up to 8000 characters of readable text. Use this after web_search to read relevant source pages, or when the user provides a URL and asks about its contents.',
-                parameters: z.object({
+                inputSchema: z.object({
                   url: z.string().url().describe('The full HTTP/HTTPS URL to fetch and read'),
                 }),
                 execute: async ({ url }: { url: string }) => {
                   try {
-                    const res = await fetch('/api/web-search', {
+                    const res = await fetch(new URL('/api/web-search', request.url), {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ url }),

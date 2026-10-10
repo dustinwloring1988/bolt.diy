@@ -138,7 +138,12 @@ export default function McpTab() {
 
   const handleAddRecommendedServer = (server: (typeof RECOMMENDED_SERVERS)[0]) => {
     try {
-      const currentConfig = parsedConfig || { mcpServers: {} };
+      if (!parsedConfig) {
+        toast.error('Fix the MCP configuration JSON before adding a server');
+        return;
+      }
+
+      const currentConfig = parsedConfig;
 
       const newConfig = {
         ...currentConfig,

@@ -9,6 +9,7 @@ import {
   updateProviderSettings,
   updateWebSearchEnabled,
   updateWebSearchProvider,
+  webSearchEnabledStore,
   updatePromptId,
   type WebSearchProvider,
 } from '~/lib/stores/settings';
@@ -98,12 +99,6 @@ function getApiKeysFromCookie(): Record<string, string> {
   } catch {
     return {};
   }
-}
-
-function saveApiKeyToCookie(providerName: string, apiKey: string) {
-  const current = getApiKeysFromCookie();
-  const updated = { ...current, [providerName]: apiKey };
-  Cookies.set('apiKeys', JSON.stringify(updated));
 }
 
 // ─── Step types ───────────────────────────────────────────────────────────────
@@ -255,7 +250,7 @@ export function OnboardingModal() {
   const [connectorTokens, setConnectorTokens] = useState<Record<string, string>>({});
 
   // Search state
-  const [enableSearch, setEnableSearch] = useState(false);
+  const [enableSearch, setEnableSearch] = useState(() => webSearchEnabledStore.get());
   const [searchProvider, setSearchProvider] = useState<WebSearchProvider>('exa');
 
   // Prompt state
@@ -313,10 +308,13 @@ export function OnboardingModal() {
       }
     });
 
-    // Save API keys to cookie
-    Object.entries(apiKeys).forEach(([providerName, key]) => {
-      if (key.trim()) {
-        saveApiKeyToCookie(providerName, key.trim());
+    // Save API keys to cookie, removing entries the user cleared.
+    const updatedApiKeys = { ...getApiKeysFromCookie(), ...apiKeys };
+    Object.entries(updatedApiKeys).forEach(([providerName, key]) => {
+      if (!key.trim()) {
+        delete updatedApiKeys[providerName];
+      } else {
+        updatedApiKeys[providerName] = key.trim();
       }
     });
 
@@ -325,15 +323,15 @@ export function OnboardingModal() {
       const token = connectorTokens[connector.id];
 
       if (token?.trim()) {
-        saveApiKeyToCookie(connector.storeKey, token.trim());
+        updatedApiKeys[connector.storeKey] = token.trim();
       }
     });
 
+    Cookies.set('apiKeys', JSON.stringify(updatedApiKeys));
+
     // Save search settings
-    if (enableSearch) {
-      updateWebSearchEnabled(true);
-      updateWebSearchProvider(searchProvider);
-    }
+    updateWebSearchEnabled(enableSearch);
+    updateWebSearchProvider(searchProvider);
 
     // Save prompt selection
     updatePromptId(selectedPromptId);
