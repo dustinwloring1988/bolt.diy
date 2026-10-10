@@ -10,6 +10,8 @@ interface BaseIconButtonProps {
   iconClassName?: string;
   disabledClassName?: string;
   title?: string;
+  'aria-label'?: string;
+  'aria-pressed'?: boolean;
   disabled?: boolean;
   onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
 }
@@ -38,6 +40,8 @@ export const IconButton = memo(
         disabledClassName,
         disabled = false,
         title,
+        'aria-label': ariaLabel,
+        'aria-pressed': ariaPressed,
         onClick,
         children,
       }: IconButtonProps,
@@ -54,6 +58,8 @@ export const IconButton = memo(
             className,
           )}
           title={title}
+          aria-label={ariaLabel}
+          aria-pressed={ariaPressed}
           disabled={disabled}
           onClick={(event) => {
             if (disabled) {

@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { isGitHubConnected } from '~/lib/stores/githubConnection';
+import { useMCPStore } from '~/lib/stores/mcp';
 import { skillsStore, toggleSkill } from '~/lib/stores/skills';
 import { supabaseConnection } from '~/lib/stores/supabase';
 import { classNames } from '~/utils/classNames';
@@ -25,6 +26,7 @@ export function AttachmentMenu({
   isEnhanceDisabled = false,
 }: AttachmentMenuProps) {
   const skills = useStore(skillsStore);
+  const mcpServers = useMCPStore((state) => state.serverTools);
   const githubConnected = useStore(isGitHubConnected);
   const supabaseConnected = useStore(supabaseConnection).isConnected ?? false;
 
@@ -120,6 +122,68 @@ export function AttachmentMenu({
           </DropdownMenu.Item>
 
           <DropdownMenu.Separator className="h-px bg-bolt-elements-borderColor my-1" />
+
+          <DropdownMenu.Sub>
+            <DropdownMenu.SubTrigger
+              className={classNames(
+                'flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
+                'text-bolt-elements-textPrimary',
+                'hover:bg-bolt-elements-background-depth-3',
+                'outline-none transition-colors',
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <div className="i-bolt:mcp text-lg"></div>
+                <span>MCP</span>
+              </div>
+              <div className="i-ph:caret-right text-sm"></div>
+            </DropdownMenu.SubTrigger>
+
+            <DropdownMenu.Portal>
+              <DropdownMenu.SubContent
+                className={classNames(
+                  'min-w-[180px] rounded-lg p-1',
+                  'bg-bolt-elements-background-depth-2',
+                  'border border-bolt-elements-borderColor',
+                  'shadow-lg',
+                  'animate-in fade-in-80 zoom-in-95',
+                  'data-[side=right]:slide-in-from-left-2',
+                  'data-[side=left]:slide-in-from-right-2',
+                  'z-[1000]',
+                )}
+                sideOffset={8}
+              >
+                {Object.entries(mcpServers).length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-bolt-elements-textTertiary">No MCP servers configured</div>
+                ) : (
+                  Object.entries(mcpServers).map(([serverName, server]) => (
+                    <div
+                      key={serverName}
+                      className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-bolt-elements-textPrimary"
+                    >
+                      <div className="i-bolt:mcp text-lg shrink-0"></div>
+                      <span className="truncate">{serverName}</span>
+                      {statusDot(server.status === 'available', serverName)}
+                    </div>
+                  ))
+                )}
+                <DropdownMenu.Separator className="h-px bg-bolt-elements-borderColor my-1" />
+                <DropdownMenu.Item
+                  className={classNames(
+                    'flex items-center gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
+                    'text-bolt-elements-textPrimary',
+                    'hover:bg-bolt-elements-background-depth-3',
+                    'data-[highlighted]:bg-bolt-elements-background-depth-3',
+                    'outline-none transition-colors',
+                  )}
+                  onSelect={() => document.dispatchEvent(new CustomEvent('open-mcp-settings'))}
+                >
+                  <div className="i-ph:gear text-lg"></div>
+                  <span>MCP Settings</span>
+                </DropdownMenu.Item>
+              </DropdownMenu.SubContent>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Sub>
 
           <DropdownMenu.Sub>
             <DropdownMenu.SubTrigger

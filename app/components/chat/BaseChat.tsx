@@ -77,7 +77,8 @@ interface BaseChatProps {
   selectedElement?: ElementInfo | null;
   setSelectedElement?: (element: ElementInfo | null) => void;
   addToolOutput?: (options: { tool: string; toolCallId: string; output: unknown }) => void;
-  onWebSearchResult?: (result: string) => void;
+  webSearchEnabled?: boolean;
+  setWebSearchEnabled?: (enabled: boolean) => void;
 }
 
 export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
@@ -125,7 +126,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       addToolOutput = () => {
         throw new Error('addToolOutput not implemented');
       },
-      onWebSearchResult,
+      webSearchEnabled = false,
+      setWebSearchEnabled = () => undefined,
     },
     ref,
   ) => {
@@ -442,7 +444,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   setDesignScheme={setDesignScheme}
                   selectedElement={selectedElement}
                   setSelectedElement={setSelectedElement}
-                  onWebSearchResult={onWebSearchResult}
+                  webSearchEnabled={webSearchEnabled}
+                  setWebSearchEnabled={setWebSearchEnabled}
                 />
               </div>
             </StickToBottom>

@@ -3,18 +3,19 @@ import { useState } from 'react';
 import GitHubTab from '~/components/@settings/tabs/github/GitHubTab';
 import GitLabTab from '~/components/@settings/tabs/gitlab/GitLabTab';
 import NetlifyTab from '~/components/@settings/tabs/netlify/NetlifyTab';
+import PostHogTab from '~/components/@settings/tabs/posthog/PostHogTab';
 import SupabaseTab from '~/components/@settings/tabs/supabase/SupabaseTab';
 import VercelTab from '~/components/@settings/tabs/vercel/VercelTab';
 import { classNames } from '~/utils/classNames';
 
-type ConnectorType = 'github' | 'gitlab' | 'vercel' | 'netlify' | 'supabase';
+type ConnectorType = 'github' | 'gitlab' | 'vercel' | 'netlify' | 'supabase' | 'posthog';
 
 interface Connector {
   id: ConnectorType;
   name: string;
   description: string;
   icon: React.ReactNode;
-  category: 'source-control' | 'deployment' | 'database';
+  category: 'source-control' | 'deployment' | 'database' | 'analytics';
 }
 
 // GitHub icon
@@ -73,6 +74,15 @@ const SupabaseIcon = () => (
   </svg>
 );
 
+const PostHogIcon = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
+    <path
+      fill="currentColor"
+      d="M3 4h7.2c2.9 0 4.8 1.8 4.8 4.4 0 1.8-1 3.1-2.5 3.7 2 .5 3.5 2 3.5 4.2 0 2.8-2.1 4.7-5.2 4.7H3V4Zm4 3.5v3.2h2.7c1 0 1.6-.6 1.6-1.6s-.6-1.6-1.6-1.6H7Zm0 6.5v3.5h3.2c1.1 0 1.8-.7 1.8-1.7s-.7-1.8-1.8-1.8H7Zm11.3-9.8 3.3 3.3-2.1 2.1-3.3-3.3 2.1-2.1Zm-1.1 8.3h4.7v3h-4.7v-3Z"
+    />
+  </svg>
+);
+
 const CONNECTORS: Connector[] = [
   {
     id: 'github',
@@ -109,12 +119,20 @@ const CONNECTORS: Connector[] = [
     icon: <SupabaseIcon />,
     category: 'database',
   },
+  {
+    id: 'posthog',
+    name: 'PostHog',
+    description: 'Query product analytics, investigate errors, and inspect feature flags with PostHog MCP',
+    icon: <PostHogIcon />,
+    category: 'analytics',
+  },
 ];
 
 const CATEGORY_LABELS = {
   'source-control': 'Source Control',
   deployment: 'Deployment',
   database: 'Database & Backend',
+  analytics: 'Analytics',
 };
 
 export default function ConnectorsTab() {
@@ -151,6 +169,8 @@ export default function ConnectorsTab() {
         return <NetlifyTab />;
       case 'supabase':
         return <SupabaseTab />;
+      case 'posthog':
+        return <PostHogTab />;
       default:
         return null;
     }

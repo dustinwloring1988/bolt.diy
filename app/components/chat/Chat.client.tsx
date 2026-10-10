@@ -117,6 +117,7 @@ export const ChatImpl = memo(
       autoSelectTemplate,
       contextOptimizationEnabled,
       webSearchEnabled,
+      setWebSearchEnabled,
       webSearchProvider,
     } = useSettings();
 
@@ -743,16 +744,6 @@ export const ChatImpl = memo(
       Cookies.set('selectedProvider', newProvider.name, { expires: 30 });
     };
 
-    const handleWebSearchResult = useCallback(
-      (result: string) => {
-        const currentInput = input || '';
-        const newInput = currentInput.length > 0 ? `${result}\n\n${currentInput}` : result;
-
-        setInput(newInput);
-      },
-      [input],
-    );
-
     return (
       <BaseChat
         ref={animationScope}
@@ -826,7 +817,8 @@ export const ChatImpl = memo(
         selectedElement={selectedElement}
         setSelectedElement={setSelectedElement}
         addToolOutput={addToolOutput}
-        onWebSearchResult={handleWebSearchResult}
+        webSearchEnabled={webSearchEnabled}
+        setWebSearchEnabled={setWebSearchEnabled}
       />
     );
   },

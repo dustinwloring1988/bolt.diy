@@ -53,7 +53,8 @@ interface ChatBoxProps {
   handleStop?: (() => void) | undefined;
   enhancingPrompt?: boolean | undefined;
   enhancePrompt?: (() => void) | undefined;
-  onWebSearchResult?: (result: string) => void;
+  webSearchEnabled: boolean;
+  setWebSearchEnabled: (enabled: boolean) => void;
   chatMode?: 'discuss' | 'build';
   setChatMode?: (mode: 'discuss' | 'build') => void;
   designScheme?: DesignScheme;
@@ -264,7 +265,11 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
               <SupabaseConnection />
             </div>
             <McpTools />
-            <WebSearch onSearchResult={(result) => props.onWebSearchResult?.(result)} disabled={props.isStreaming} />
+            <WebSearch
+              enabled={props.webSearchEnabled}
+              onToggle={props.setWebSearchEnabled}
+              disabled={props.isStreaming}
+            />
 
             <SpeechRecognitionButton
               isListening={props.isListening}
