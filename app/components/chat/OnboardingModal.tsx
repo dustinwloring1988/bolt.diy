@@ -173,7 +173,11 @@ const ToggleCard = ({
         : 'border-bolt-elements-borderColor bg-bolt-elements-background-depth-2',
     )}
   >
-    <button type="button" className="w-full flex items-center gap-3 p-3 text-left" onClick={onClick}>
+    <button
+      type="button"
+      className="w-full flex items-center gap-3 p-3 text-left bg-transparent hover:bg-bolt-elements-background-depth-2 transition-colors"
+      onClick={onClick}
+    >
       <div
         className={classNames(
           'w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0',
@@ -401,7 +405,7 @@ export function OnboardingModal() {
               <button
                 type="button"
                 onClick={goBack}
-                className="text-xs text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary transition-colors flex items-center gap-1"
+                className="bg-transparent text-xs text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors flex items-center gap-1"
               >
                 <div className="i-ph:arrow-left text-sm" />
                 Back
@@ -409,7 +413,7 @@ export function OnboardingModal() {
               <button
                 type="button"
                 onClick={handleSkip}
-                className="text-xs text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary transition-colors"
+                className="bg-transparent text-xs text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors"
               >
                 Skip all
               </button>
@@ -894,7 +898,7 @@ function NavButtons({
         <button
           type="button"
           onClick={onBack}
-          className="flex-1 px-4 py-2.5 rounded-xl text-sm border border-bolt-elements-borderColor text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors"
+          className="flex-1 px-4 py-2.5 rounded-xl text-sm border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-3 transition-colors"
         >
           Back
         </button>
