@@ -99,7 +99,7 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
     try {
       set(() => ({ isUpdatingConfig: true }));
 
-      const safeSettings = sanitizePostHogSettings(newSettings);
+      const safeSettings = sanitizePostHogSettings(newSettings, get().settings);
       const serverTools = await updateServerConfig(safeSettings.mcpConfig);
 
       persistSettings(safeSettings);
@@ -133,30 +133,35 @@ function restorePostHogSessionToken(settings: MCPSettings) {
 
   const server = settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID];
 
-  if (server && server.type !== 'stdio') {
-    const headers = 'headers' in server ? (server.headers ?? {}) : {};
-    const legacyAuthorization = headers.Authorization;
-    const token = server.url === POSTHOG_SERVER_URL ? getStoredPostHogToken(server.url) : '';
-    const legacyToken = legacyAuthorization?.startsWith('Bearer ') ? legacyAuthorization.slice(7) : '';
-    const safeToken = token || (server.url === POSTHOG_SERVER_URL ? legacyToken : '');
-
-    if (safeToken) {
-      storePostHogToken(server.url, safeToken);
-      settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID] = {
-        ...server,
-        headers: { ...headers, Authorization: `Bearer ${safeToken}` },
-      };
-    } else {
-      const safeHeaders = { ...headers };
-
-      delete safeHeaders.Authorization;
-      settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID] = { ...server, headers: safeHeaders };
-
-      if (server.url !== POSTHOG_SERVER_URL) {
-        sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
-      }
-    }
+  if (!server || server.type === 'stdio') {
+    sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
+    return;
   }
+
+  const headers = 'headers' in server ? (server.headers ?? {}) : {};
+
+  if (server.url === POSTHOG_SERVER_URL) {
+    const token = getStoredPostHogToken(server.url) || getBearerToken(headers);
+
+    if (token) {
+      storePostHogToken(server.url, token);
+    } else {
+      sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
+    }
+
+    settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID] = {
+      ...server,
+      headers: { ...withoutAuthorization(headers), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    };
+
+    return;
+  }
+
+  const sessionToken = getStoredPostHogToken(POSTHOG_SERVER_URL);
+
+  const safeHeaders = sessionToken ? withoutBearerToken(headers, sessionToken) : headers;
+  sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
+  settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID] = { ...server, headers: safeHeaders };
 }
 
 function getStoredPostHogToken(serverUrl: string): string {
@@ -179,24 +184,79 @@ function storePostHogToken(serverUrl: string, token: string) {
   sessionStorage.setItem(POSTHOG_SESSION_TOKEN_KEY, JSON.stringify({ url: serverUrl, token }));
 }
 
-function sanitizePostHogSettings(settings: MCPSettings): MCPSettings {
+function sanitizePostHogSettings(settings: MCPSettings, previousSettings: MCPSettings): MCPSettings {
   const server = settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID];
 
-  if (!server || server.type === 'stdio' || server.url === POSTHOG_SERVER_URL) {
+  if (!isBrowser) {
+    return settings;
+  }
+
+  if (!server || server.type === 'stdio') {
+    sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
     return settings;
   }
 
   const headers = { ...(server.headers ?? {}) };
-  delete headers.Authorization;
+
+  if (server.url === POSTHOG_SERVER_URL) {
+    const token = getBearerToken(headers);
+
+    if (token) {
+      storePostHogToken(server.url, token);
+    } else {
+      sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
+    }
+
+    return {
+      ...settings,
+      mcpConfig: {
+        ...settings.mcpConfig,
+        mcpServers: {
+          ...settings.mcpConfig.mcpServers,
+          [POSTHOG_SERVER_ID]: {
+            ...server,
+            headers: { ...withoutAuthorization(headers), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          },
+        },
+      },
+    };
+  }
+
+  const previousServer = previousSettings.mcpConfig.mcpServers[POSTHOG_SERVER_ID];
+  const previousHeaders = previousServer && 'headers' in previousServer ? (previousServer.headers ?? {}) : {};
+
+  const previousFirstPartyToken =
+    previousServer?.type !== 'stdio' && previousServer?.url === POSTHOG_SERVER_URL
+      ? getBearerToken(previousHeaders) || getStoredPostHogToken(POSTHOG_SERVER_URL)
+      : getStoredPostHogToken(POSTHOG_SERVER_URL);
+
+  const safeHeaders = previousFirstPartyToken ? withoutBearerToken(headers, previousFirstPartyToken) : headers;
   sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
 
   return {
     ...settings,
     mcpConfig: {
       ...settings.mcpConfig,
-      mcpServers: { ...settings.mcpConfig.mcpServers, [POSTHOG_SERVER_ID]: { ...server, headers } },
+      mcpServers: { ...settings.mcpConfig.mcpServers, [POSTHOG_SERVER_ID]: { ...server, headers: safeHeaders } },
     },
   };
+}
+
+function getBearerToken(headers: Record<string, string>): string | undefined {
+  const authorization = Object.entries(headers).find(([name]) => name.toLowerCase() === 'authorization')?.[1];
+  return authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+}
+
+function withoutAuthorization(headers: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(headers).filter(([name]) => name.toLowerCase() !== 'authorization'));
+}
+
+function withoutBearerToken(headers: Record<string, string>, token: string): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name, value]) => {
+      return name.toLowerCase() !== 'authorization' || value.match(/^Bearer\s+(.+)$/i)?.[1] !== token;
+    }),
+  );
 }
 
 function persistSettings(settings: MCPSettings) {
@@ -207,21 +267,21 @@ function persistSettings(settings: MCPSettings) {
   const mcpServers = { ...settings.mcpConfig.mcpServers };
   const posthogServer = mcpServers[POSTHOG_SERVER_ID];
 
-  if (posthogServer && 'headers' in posthogServer) {
-    const headers = { ...posthogServer.headers };
-    const authorization = headers.Authorization;
-    delete headers.Authorization;
+  if (posthogServer && posthogServer.type !== 'stdio' && posthogServer.url === POSTHOG_SERVER_URL) {
+    const headers = 'headers' in posthogServer ? (posthogServer.headers ?? {}) : {};
+    const authorizationToken = getBearerToken(headers);
 
-    if (posthogServer.url === POSTHOG_SERVER_URL && authorization?.startsWith('Bearer ')) {
-      storePostHogToken(posthogServer.url, authorization.slice(7));
-    }
-
-    if (Object.keys(headers).length) {
-      mcpServers[POSTHOG_SERVER_ID] = { ...posthogServer, headers };
+    if (authorizationToken) {
+      storePostHogToken(posthogServer.url, authorizationToken);
     } else {
-      const { headers: _headers, ...serverWithoutHeaders } = posthogServer;
-      mcpServers[POSTHOG_SERVER_ID] = serverWithoutHeaders;
+      sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
     }
+
+    const safeHeaders = withoutAuthorization(headers);
+    mcpServers[POSTHOG_SERVER_ID] = { ...posthogServer, headers: safeHeaders };
+  } else if (posthogServer && posthogServer.type !== 'stdio') {
+    // Custom endpoints keep credentials explicitly configured for that endpoint.
+    sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
   } else {
     sessionStorage.removeItem(POSTHOG_SESSION_TOKEN_KEY);
   }

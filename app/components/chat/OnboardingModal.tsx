@@ -19,8 +19,9 @@ import {
   updatePromptId,
   type WebSearchProvider,
 } from '~/lib/stores/settings';
-import { fetchSupabaseStats, supabaseConnection, updateSupabaseConnection } from '~/lib/stores/supabase';
+import { supabaseConnection, updateSupabaseConnection } from '~/lib/stores/supabase';
 import type { IProviderConfig } from '~/types/model';
+import type { SupabaseStats, SupabaseUser } from '~/types/supabase';
 import { classNames } from '~/utils/classNames';
 import { providerBaseUrlEnvKeys } from '~/utils/constants';
 
@@ -361,8 +362,19 @@ export function OnboardingModal() {
           if (connector.id === 'github') {
             await github.connect(token, 'classic');
           } else if (connector.id === 'supabase') {
-            await fetchSupabaseStats(token);
-            updateSupabaseConnection({ token, isConnected: true });
+            const response = await fetch('/api/supabase', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token }),
+            });
+
+            const data = (await response.json()) as { user: SupabaseUser; stats: SupabaseStats };
+
+            if (!response.ok) {
+              throw new Error('Failed to connect to Supabase');
+            }
+
+            updateSupabaseConnection({ user: data.user, token, stats: data.stats, isConnected: true });
           }
         }),
       );

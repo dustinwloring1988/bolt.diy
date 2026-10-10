@@ -67,7 +67,7 @@ async function askSecret(question) {
         }
 
         if (character === '\r' || character === '\n') {
-          if (answer) {
+          if (answer.trim()) {
             finish();
             return;
           }

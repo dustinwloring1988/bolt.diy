@@ -72,6 +72,7 @@ export class PromptLibrary {
     });
   }
   static getPropmtFromLibrary(promptId: string, options: PromptOptions) {
-    return (this.library[promptId] ?? this.library.default).get(options);
+    const prompt = Object.hasOwn(this.library, promptId) ? this.library[promptId] : this.library.default;
+    return prompt.get(options);
   }
 }

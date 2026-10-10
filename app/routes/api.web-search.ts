@@ -470,7 +470,8 @@ export async function webSearchAction({ request, context }: ActionFunctionArgs) 
         );
       }
 
-      const isCloudflareWorker = Boolean((context as { cloudflare?: unknown }).cloudflare);
+      const isCloudflareWorker = Boolean((context as { cloudflare?: { ctx?: unknown } }).cloudflare?.ctx);
+
       const { response, finalUrl } = await fetchPublicUrl(url, isCloudflareWorker);
 
       if (!response.ok) {

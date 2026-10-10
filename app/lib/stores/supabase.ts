@@ -93,9 +93,17 @@ if (initialState.token && !initialState.stats) {
 }
 
 export function updateSupabaseConnection(connection: Partial<SupabaseConnectionState>) {
-  connectionRevision++;
-
   const currentState = supabaseConnection.get();
+
+  const accountChanged = connection.user !== undefined && connection.user?.id !== currentState.user?.id;
+  const tokenChanged = connection.token !== undefined && connection.token !== currentState.token;
+
+  const connectionStatusChanged =
+    connection.isConnected !== undefined && connection.isConnected !== currentState.isConnected;
+
+  if (accountChanged || tokenChanged || connectionStatusChanged) {
+    connectionRevision++;
+  }
 
   if (connection.user !== undefined || connection.token !== undefined) {
     const newUser = connection.user !== undefined ? connection.user : currentState.user;
