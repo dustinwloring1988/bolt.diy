@@ -12,7 +12,6 @@ import { useMessageParser, usePromptEnhancer, useShortcuts } from '~/lib/hooks';
 import { useSettings } from '~/lib/hooks/useSettings';
 import { description, useChatHistory } from '~/lib/persistence';
 import { createMessage, getMessageText, type AnyPart } from '~/lib/persistence/messageMigration';
-import { createRepairPrompt, getRepairFingerprint } from '~/lib/runtime/repair-prompt';
 import { chatStore } from '~/lib/stores/chat';
 import { logStore } from '~/lib/stores/logs';
 import { useMCPStore } from '~/lib/stores/mcp';
@@ -102,7 +101,6 @@ export const ChatImpl = memo(
     const files = useStore(workbenchStore.files);
     const [designScheme, setDesignScheme] = useState<DesignScheme>(defaultDesignScheme);
     const actionAlert = useStore(workbenchStore.alert);
-    const previewRepairState = useRef({ attempts: 0, fingerprints: new Set<string>() });
     const deployAlert = useStore(workbenchStore.deployAlert);
     const supabaseConn = useStore(supabaseConnection);
 
@@ -663,38 +661,6 @@ export const ChatImpl = memo(
 
       textareaRef.current?.blur();
     };
-
-    useEffect(() => {
-      if (chatChanged) {
-        previewRepairState.current = { attempts: 0, fingerprints: new Set<string>() };
-      }
-    }, [chatChanged]);
-
-    useEffect(() => {
-      if (!actionAlert || actionAlert.source !== 'preview' || isLoading || fakeLoading) {
-        return;
-      }
-
-      const fingerprint = getRepairFingerprint(actionAlert);
-
-      if (
-        !fingerprint ||
-        previewRepairState.current.attempts >= 2 ||
-        previewRepairState.current.fingerprints.has(fingerprint)
-      ) {
-        return;
-      }
-
-      previewRepairState.current.attempts += 1;
-      previewRepairState.current.fingerprints.add(fingerprint);
-
-      const repairText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${createRepairPrompt(actionAlert, true)}`;
-      void sendChatMessage({
-        ...createMessage({ role: 'user', text: repairText }),
-        parts: createMessageParts(repairText, []),
-      } as UIMessage);
-      workbenchStore.clearAlert();
-    }, [actionAlert, chatChanged, fakeLoading, isLoading, model, provider.name, sendChatMessage]);
 
     /*
      * Builds a user message carrying its images and uploads. v5 removed
