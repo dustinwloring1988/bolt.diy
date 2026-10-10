@@ -27,7 +27,10 @@ async function supabaseAction({ request, context }: ActionFunctionArgs) {
       const errorText = await projectsResponse.text();
       console.error('Projects fetch failed:', errorText);
 
-      return Response.json({ error: 'Failed to fetch projects' }, { status: 401 });
+      return Response.json(
+        { error: 'Failed to fetch projects' },
+        { status: projectsResponse.status === 401 || projectsResponse.status === 403 ? projectsResponse.status : 502 },
+      );
     }
 
     const projects = (await projectsResponse.json()) as SupabaseProject[];
@@ -57,7 +60,7 @@ async function supabaseAction({ request, context }: ActionFunctionArgs) {
       {
         error: error instanceof Error ? error.message : 'Authentication failed',
       },
-      { status: 401 },
+      { status: 502 },
     );
   }
 }

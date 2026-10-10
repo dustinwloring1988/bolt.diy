@@ -327,6 +327,15 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
          * These are registered as real LLM tool calls when webSearchEnabled is true.
          * The LLM invokes them autonomously; execution delegates to /api/web-search.
          */
+        const clientAddress =
+          request.headers.get('cf-connecting-ip') ||
+          request.headers.get('x-real-ip') ||
+          request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+        const webSearchRequestHeaders = {
+          'Content-Type': 'application/json',
+          ...(clientAddress ? { 'x-forwarded-for': clientAddress } : {}),
+        };
+
         const webTools = webSearchEnabled
           ? {
               web_search: {
@@ -340,7 +349,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                   try {
                     const res = await fetch(new URL('/api/web-search', request.url), {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: webSearchRequestHeaders,
                       body: JSON.stringify({ query, provider: webSearchProvider || 'exa', numResults }),
                       signal: AbortSignal.timeout(25_000),
                     });
@@ -376,7 +385,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                   try {
                     const res = await fetch(new URL('/api/web-search', request.url), {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: webSearchRequestHeaders,
                       body: JSON.stringify({ url }),
                       signal: AbortSignal.timeout(10_000),
                     });
