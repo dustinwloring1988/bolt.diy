@@ -1,8 +1,9 @@
 import { memo, useEffect, useState } from 'react';
-import { bundledLanguages, codeToHtml, type BundledLanguage } from 'shiki';
+import { bundledLanguages, type BundledLanguage } from 'shiki';
 import styles from './CodeBlock.module.scss';
 import { classNames } from '~/utils/classNames';
 import { createScopedLogger } from '~/utils/logger';
+import { highlightCode } from '~/utils/syntax-highlighter-client';
 
 const logger = createScopedLogger('CodeBlock');
 
@@ -65,6 +66,8 @@ export const CodeBlock = memo(
     };
 
     useEffect(() => {
+      let isCurrent = true;
+
       /*
        * During active streaming the code string changes on every token.
        * Running Shiki's full tokenizer each time is O(code-length) per token —
@@ -76,23 +79,30 @@ export const CodeBlock = memo(
         setHTML(
           `<pre class="shiki" style="background-color:var(--shiki-bg,#1e1e1e);color:var(--shiki-fg,#d4d4d4);padding:1em;border-radius:0.5em;overflow-x:auto"><code>${escapeHtml(code)}</code></pre>`,
         );
-        return;
+
+        return () => {
+          isCurrent = false;
+        };
       }
 
       let effectiveLanguage = language;
 
       if (language && !isSpecialLanguage(language) && !(language in bundledLanguages)) {
         logger.warn(`Unsupported language '${language}', falling back to plaintext`);
-        effectiveLanguage = 'plaintext';
+        effectiveLanguage = 'plaintext' as BundledLanguage;
       }
 
       logger.trace(`Language = ${effectiveLanguage}`);
 
-      const processCode = async () => {
-        setHTML(await codeToHtml(code, { lang: effectiveLanguage, theme }));
-      };
+      void highlightCode(code, effectiveLanguage as BundledLanguage, theme).then((html) => {
+        if (isCurrent) {
+          setHTML(html);
+        }
+      });
 
-      processCode();
+      return () => {
+        isCurrent = false;
+      };
     }, [code, language, theme, isStreaming]);
 
     return (

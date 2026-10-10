@@ -95,4 +95,16 @@ describe('LLMManager', () => {
     const manager = LLMManager.getInstance({});
     expect(manager.getModelList().length).toBeGreaterThan(0);
   });
+
+  it('accepts partial provider settings without dereferencing missing provider entries', async () => {
+    const manager = LLMManager.getInstance({});
+
+    await expect(
+      manager.updateModelList({
+        providerSettings: {
+          OpenAI: { enabled: false },
+        },
+      }),
+    ).resolves.toEqual(expect.any(Array));
+  });
 });

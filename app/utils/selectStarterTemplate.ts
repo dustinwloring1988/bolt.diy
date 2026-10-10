@@ -65,7 +65,7 @@ MOST IMPORTANT: YOU DONT HAVE TIME TO THINK JUST START RESPONDING BASED ON HUNCH
 
 const templates: Template[] = STARTER_TEMPLATES.filter((t) => !t.name.includes('shadcn'));
 
-const parseSelectedTemplate = (llmOutput: string): { template: string; title: string } | null => {
+const parseSelectedTemplate = (llmOutput: unknown): { template: string; title: string } | null => {
   try {
     // A failed or empty upstream response must not throw a TypeError here.
     if (typeof llmOutput !== 'string' || llmOutput.length === 0) {
@@ -97,27 +97,31 @@ export const selectStarterTemplate = async (options: { message: string; model: s
     provider,
     system: starterTemplateSelectionPrompt(templates),
   };
-  const response = await fetch('/api/llmcall', {
-    method: 'POST',
-    body: JSON.stringify(requestBody),
-  });
 
-  const respJson: { text: string } = await response.json();
-  console.log(respJson);
+  try {
+    const response = await fetch('/api/llmcall', {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    });
 
-  const { text } = respJson;
-  const selectedTemplate = parseSelectedTemplate(text);
+    if (!response.ok) {
+      throw new Error(`Template selection failed with HTTP ${response.status}`);
+    }
 
-  if (selectedTemplate) {
-    return selectedTemplate;
-  } else {
-    console.log('No template selected, using blank template');
+    const respJson: { text?: unknown } = await response.json();
+    const selectedTemplate = parseSelectedTemplate(respJson.text);
 
-    return {
-      template: 'blank',
-      title: '',
-    };
+    if (selectedTemplate) {
+      return selectedTemplate;
+    }
+  } catch (error) {
+    console.warn('Template selection failed; continuing with a blank template', error);
   }
+
+  return {
+    template: 'blank',
+    title: '',
+  };
 };
 
 const getGitHubRepoContent = async (repoName: string): Promise<{ name: string; path: string; content: string }[]> => {

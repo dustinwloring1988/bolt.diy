@@ -1,9 +1,9 @@
-import { defineConfig } from 'vite';
+import { execSync } from 'node:child_process';
 import { reactRouter } from '@react-router/dev/vite';
 import UnoCSS from 'unocss/vite';
+import { defineConfig } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { optimizeCssModules } from 'vite-plugin-optimize-css-modules';
-import { execSync } from 'child_process';
 
 // Get git hash with fallback
 const getGitHash = () => {

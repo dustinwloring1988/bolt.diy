@@ -3,9 +3,9 @@
  * Check bundle sizes against performance budgets
  */
 
-import { readFileSync, readdirSync, statSync } from 'fs';
-import { join } from 'path';
-import { gzipSync } from 'zlib';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 const BUILD_DIR = join(process.cwd(), 'build', 'client');
 const BUDGETS_FILE = join(process.cwd(), '.performance-budgets.json');
@@ -13,6 +13,7 @@ const BUDGETS_FILE = join(process.cwd(), '.performance-budgets.json');
 function getFileSize(filePath) {
   const content = readFileSync(filePath);
   const gzipped = gzipSync(content);
+
   return {
     raw: content.length,
     gzipped: gzipped.length,
@@ -49,6 +50,7 @@ function checkAgainstBudgets(bundles, budgets) {
 
   bundles.forEach((bundle) => {
     const sizeKB = bundle.gzipped / 1024;
+
     let budget = null;
     let budgetName = null;
 
@@ -99,18 +101,22 @@ function generateReport() {
     });
 
     console.log('\nTotal:');
+
     const totalGzipped = bundles.reduce((sum, b) => sum + b.gzipped, 0);
     console.log(`${formatSize(totalGzipped)} (gzipped)`);
 
     // Check against budgets
     console.log('\n=== Budget Compliance ===\n');
+
     const budgetResults = checkAgainstBudgets(bundles, budgets);
 
     if (budgetResults.length === 0) {
-      console.log('⚠️  No budgets matched to bundles');
+      console.error('❌ No bundle files matched the configured size budgets');
+      process.exit(1);
     } else {
       budgetResults.forEach((result) => {
         const status = result.withinBudget ? '✅' : '❌';
+
         const diff = result.withinBudget
           ? `(${formatSize(result.budget * 1024 - result.size * 1024)} under budget)`
           : `(${formatSize(result.difference * 1024)} over budget)`;
@@ -121,6 +127,7 @@ function generateReport() {
       });
 
       const failures = budgetResults.filter((r) => !r.withinBudget);
+
       if (failures.length > 0) {
         console.log(`\n❌ ${failures.length} bundle(s) exceeded budget`);
         process.exit(1);

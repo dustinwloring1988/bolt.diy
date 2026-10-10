@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import {
   streamingOptimizer,
@@ -16,7 +16,6 @@ import {
 } from '~/lib/performance/streaming-optimizer';
 
 const FRAME_BUDGET_60FPS = 16.67;
-const FRAME_BUDGET_120FPS = 8.33;
 
 describe('Streaming Performance - Frame Rate', () => {
   beforeEach(() => {
@@ -157,6 +156,7 @@ describe('Streaming Performance - Text Optimization', () => {
 
     // Optimized should be as fast or faster
     expect(time2).toBeLessThanOrEqual(time1 * 1.1); // Allow 10% variance
+    expect(match2).toEqual(match1);
 
     console.log(`✓ Regex on optimized text: ${time2.toFixed(3)}ms vs ${time1.toFixed(3)}ms`);
   });
@@ -199,6 +199,7 @@ describe('Streaming Performance - Long Messages', () => {
       render(<div>{chunk}</div>);
       const frameTime = performance.now() - frameStart;
       streamingOptimizer.trackFrame(frameTime);
+
       return Math.max(max, frameTime);
     }, 0);
 

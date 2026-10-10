@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import McpServerList from '~/components/@settings/tabs/mcp/McpServerList';
 import type { MCPConfig } from '~/lib/services/mcpService';
-import { useMCPStore } from '~/lib/stores/mcp';
+import { getMCPConfigToken, setMCPConfigToken, useMCPStore } from '~/lib/stores/mcp';
 import { classNames } from '~/utils/classNames';
 
 const EXAMPLE_MCP_CONFIG: MCPConfig = {
@@ -73,6 +73,7 @@ export default function McpTab() {
   const checkServersAvailabilities = useMCPStore((state) => state.checkServersAvailabilities);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [adminToken, setAdminToken] = useState(getMCPConfigToken);
   const [mcpConfigText, setMCPConfigText] = useState('');
   const [maxLLMSteps, setMaxLLMSteps] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -315,6 +316,25 @@ export default function McpTab() {
         <h2 className="text-base font-medium text-bolt-elements-textPrimary mb-3">Configuration</h2>
 
         <div className="space-y-4">
+          <div>
+            <label htmlFor="mcp-admin-token" className="block text-sm text-bolt-elements-textSecondary mb-2">
+              MCP administrator token
+            </label>
+            <input
+              id="mcp-admin-token"
+              type="password"
+              autoComplete="off"
+              value={adminToken}
+              onChange={(event) => {
+                setAdminToken(event.target.value);
+                setMCPConfigToken(event.target.value);
+              }}
+              className="w-full px-3 py-2 rounded-lg text-sm bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor text-bolt-elements-textPrimary"
+            />
+            <p className="mt-2 text-sm text-bolt-elements-textSecondary">
+              Enter the token supplied by your server administrator. It is kept only for this browser tab's session.
+            </p>
+          </div>
           <div>
             <label htmlFor="mcp-config" className="block text-sm text-bolt-elements-textSecondary mb-2">
               Configuration JSON

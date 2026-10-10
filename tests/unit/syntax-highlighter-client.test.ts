@@ -76,6 +76,34 @@ describe('SyntaxHighlighterClient', () => {
     it('should respect cache size limit', async () => {
       const stats = client.getCacheStats();
       expect(stats.maxSize).toBe(500);
+      expect(stats.maxBytes).toBe(8 * 1024 * 1024);
+    });
+
+    it('does not retain a result whose source key exceeds the byte budget', async () => {
+      class ImmediateWorker {
+        private _listeners = new Map<string, (event: any) => void>();
+
+        addEventListener(type: string, listener: (event: any) => void) {
+          this._listeners.set(type, listener);
+        }
+
+        postMessage({ id }: { id: string }) {
+          this._listeners.get('message')?.({ data: { id, html: '<pre><code>ok</code></pre>' } });
+        }
+
+        terminate = vi.fn();
+      }
+
+      vi.stubGlobal('Worker', ImmediateWorker);
+      const boundedClient = new SyntaxHighlighterClient();
+
+      try {
+        await boundedClient.highlight('x'.repeat(5 * 1024 * 1024), 'javascript');
+        expect(boundedClient.getCacheStats()).toMatchObject({ size: 0, bytes: 0 });
+      } finally {
+        boundedClient.dispose();
+        vi.unstubAllGlobals();
+      }
     });
   });
 
@@ -110,6 +138,7 @@ describe('SyntaxHighlighterClient', () => {
       
       const afterStats = client.getCacheStats();
       expect(afterStats.size).toBe(0);
+      expect(afterStats.bytes).toBe(0);
     });
   });
 
@@ -134,8 +163,7 @@ describe('SyntaxHighlighterClient', () => {
     });
 
     it('should handle invalid language gracefully', async () => {
-      // @ts-expect-error Testing invalid language
-      const result = await client.highlight('code', 'invalid-lang');
+      const result = await client.highlight('code', 'invalid-lang' as Parameters<typeof client.highlight>[1]);
       
       // Should return fallback HTML
       expect(result).toContain('<');

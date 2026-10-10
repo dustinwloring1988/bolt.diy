@@ -51,6 +51,12 @@ type Dirent = File | Folder;
 
 export type FileMap = Record<string, Dirent | undefined>;
 
+export function getDirectoryEntryPaths(files: FileMap, directoryPath: string): string[] {
+  const prefix = `${directoryPath}/`;
+
+  return Object.keys(files).filter((filePath) => filePath === directoryPath || filePath.startsWith(prefix));
+}
+
 export class FilesStore {
   #webcontainer: Promise<WebContainer>;
 
@@ -740,11 +746,19 @@ export class FilesStore {
           break;
         }
         case 'remove_dir': {
-          this.files.setKey(sanitizedPath, undefined);
+          const currentFiles = this.files.get();
 
-          for (const [direntPath] of Object.entries(this.files)) {
-            if (direntPath.startsWith(sanitizedPath)) {
-              this.files.setKey(direntPath, undefined);
+          /*
+           * MapStore is not the file map itself; enumerate its current value.
+           * Include the path boundary so removing `src/a` preserves `src/abc`.
+           */
+          for (const direntPath of getDirectoryEntryPaths(currentFiles, sanitizedPath)) {
+            const dirent = currentFiles[direntPath];
+            this.files.setKey(direntPath, undefined);
+
+            if (dirent?.type === 'file') {
+              this.#size = Math.max(0, this.#size - 1);
+              this.#modifiedFiles.delete(direntPath);
             }
           }
 
@@ -752,7 +766,7 @@ export class FilesStore {
         }
         case 'add_file':
         case 'change': {
-          if (type === 'add_file') {
+          if (type === 'add_file' && this.files.get()[sanitizedPath]?.type !== 'file') {
             this.#size++;
           }
 
@@ -775,8 +789,12 @@ export class FilesStore {
           break;
         }
         case 'remove_file': {
-          // Clamped: emptying the working directory removes files the map no longer tracks.
-          this.#size = Math.max(0, this.#size - 1);
+          // Directory removal may already have removed this entry.
+          if (this.files.get()[sanitizedPath]?.type === 'file') {
+            this.#size = Math.max(0, this.#size - 1);
+          }
+
+          this.#modifiedFiles.delete(sanitizedPath);
           this.files.setKey(sanitizedPath, undefined);
           break;
         }

@@ -6,7 +6,27 @@ const MCP_SETTINGS_KEY = 'mcp_settings';
 const POSTHOG_SESSION_TOKEN_KEY = 'posthog_mcp_token';
 const POSTHOG_SERVER_ID = 'posthog';
 const POSTHOG_SERVER_URL = 'https://mcp.posthog.com/mcp';
+const MCP_CONFIG_TOKEN_KEY = 'mcp_config_token';
 const isBrowser = typeof window !== 'undefined';
+
+export function getMCPConfigToken(): string {
+  return isBrowser ? (sessionStorage.getItem(MCP_CONFIG_TOKEN_KEY) ?? '') : '';
+}
+
+export function setMCPConfigToken(token: string) {
+  if (isBrowser) {
+    if (token) {
+      sessionStorage.setItem(MCP_CONFIG_TOKEN_KEY, token);
+    } else {
+      sessionStorage.removeItem(MCP_CONFIG_TOKEN_KEY);
+    }
+  }
+}
+
+export function getMCPRequestHeaders(): Record<string, string> {
+  const token = getMCPConfigToken();
+  return token ? { 'X-MCP-Config-Token': token } : {};
+}
 
 type MCPSettings = {
   mcpConfig: MCPConfig;
@@ -76,7 +96,9 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
 
           restorePostHogSessionToken(settings);
 
-          const serverTools = await updateServerConfig(settings.mcpConfig);
+          set(() => ({ settings }));
+
+          const serverTools = getMCPConfigToken() ? await updateServerConfig(settings.mcpConfig) : {};
           set(() => ({ settings, serverTools }));
           persistSettings(settings);
         } catch (error) {
@@ -125,12 +147,13 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
   checkServersAvailabilities: async () => {
     const response = await fetch('/api/mcp-check', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getMCPRequestHeaders() },
       body: JSON.stringify(get().settings.mcpConfig),
     });
 
     if (!response.ok) {
-      throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+      const error = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(error.error ?? `Server responded with ${response.status}: ${response.statusText}`);
     }
 
     const serverTools = (await response.json()) as MCPServerTools;
@@ -306,12 +329,13 @@ function persistSettings(settings: MCPSettings) {
 async function updateServerConfig(config: MCPConfig) {
   const response = await fetch('/api/mcp-update-config', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getMCPRequestHeaders() },
     body: JSON.stringify(config),
   });
 
   if (!response.ok) {
-    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+    const error = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(error.error ?? `Server responded with ${response.status}: ${response.statusText}`);
   }
 
   const data = (await response.json()) as MCPServerTools;

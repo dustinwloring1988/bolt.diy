@@ -1,14 +1,16 @@
-import { cloudflare } from '@cloudflare/vite-plugin';
-import { reactRouter } from '@react-router/dev/vite';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import { cloudflare } from '@cloudflare/vite-plugin';
+import { reactRouter } from '@react-router/dev/vite';
+import * as dotenv from 'dotenv';
 import UnoCSS from 'unocss/vite';
 import { defineConfig, type ViteDevServer } from 'vite';
 import { optimizeCssModules } from 'vite-plugin-optimize-css-modules';
-import * as dotenv from 'dotenv';
 
-// Prevent miniflare from making an external network request to workers.cloudflare.com
-// for Request.cf during local dev, which causes 3-second TimeoutError warnings.
+/*
+ * Prevent miniflare from making an external network request to workers.cloudflare.com
+ * for Request.cf during local dev, which causes 3-second TimeoutError warnings.
+ */
 process.env.CLOUDFLARE_CF_FETCH_ENABLED ??= 'false';
 
 // Load environment variables without duplicate loading or console noise
@@ -18,6 +20,7 @@ export default defineConfig((config) => {
   return {
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+
       // Ensure process.cwd is defined as a function for path-browserify compatibility
       'process.cwd': '() => "/"',
     },
@@ -26,6 +29,11 @@ export default defineConfig((config) => {
     },
     build: {
       target: 'esnext',
+    },
+
+    // Keep Shiki grammars and themes as lazy worker chunks instead of one large script.
+    worker: {
+      format: 'es',
     },
     optimizeDeps: {
       include: [
@@ -50,7 +58,7 @@ export default defineConfig((config) => {
         '@ai-sdk/fireworks',
         '@ai-sdk/google',
         '@ai-sdk/mistral',
-        '@ai-sdk/mcp',        // AI SDK 7 MCP integration
+        '@ai-sdk/mcp', // AI SDK 7 MCP integration
         '@ai-sdk/openai',
         '@openrouter/ai-sdk-provider',
         'ollama-ai-provider-v2',
@@ -189,14 +197,7 @@ export default defineConfig((config) => {
       coverage: {
         provider: 'v8',
         reporter: ['text', 'json', 'html'],
-        exclude: [
-          'node_modules/',
-          'tests/',
-          '**/*.test.{ts,tsx}',
-          '**/*.spec.{ts,tsx}',
-          '**/types.ts',
-          '**/*.d.ts',
-        ],
+        exclude: ['node_modules/', 'tests/', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}', '**/types.ts', '**/*.d.ts'],
       },
       define: {
         'import.meta.hot': 'undefined',
@@ -220,6 +221,7 @@ export default defineConfig((config) => {
  */
 function browserPolyfills() {
   const shims = 'vite-plugin-node-polyfills/shims';
+
   const prelude = [
     `import { Buffer as __boltBuffer } from '${shims}/buffer';`,
     `import __boltProcess from '${shims}/process';`,
@@ -240,6 +242,7 @@ function browserPolyfills() {
    */
   const require = createRequire(import.meta.url);
   const polyfillsRoot = dirname(dirname(require.resolve('vite-plugin-node-polyfills')));
+
   const builtinAliases: Record<string, string> = {
     'node:buffer': join(polyfillsRoot, 'shims', 'buffer', 'dist', 'index.js'),
     buffer: join(polyfillsRoot, 'shims', 'buffer', 'dist', 'index.js'),

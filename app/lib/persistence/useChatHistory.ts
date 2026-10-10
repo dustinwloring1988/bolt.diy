@@ -67,8 +67,37 @@ export function useChatHistory() {
    * which the router does pick up. That re-run is not a switch.
    */
   const loadedChatIdRef = useRef<string | undefined>(undefined);
+  const loadedRouteIdRef = useRef<string | undefined>(undefined);
+  const currentRouteIdRef = useRef<string | undefined>(undefined);
+  const loadGenerationRef = useRef(0);
+  const effectActiveRef = useRef(false);
+  const workbenchLoadQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingWorkbenchTransitionsRef = useRef(0);
 
   useEffect(() => {
+    const generation = ++loadGenerationRef.current;
+    const isCurrentLoad = () => loadGenerationRef.current === generation;
+
+    const cancelLoad = () => {
+      effectActiveRef.current = false;
+
+      if (isCurrentLoad()) {
+        loadGenerationRef.current += 1;
+      }
+    };
+    effectActiveRef.current = true;
+    currentRouteIdRef.current = mixedId;
+
+    if (mixedId !== loadedRouteIdRef.current) {
+      setReady(false);
+      setInitialMessages([]);
+      setArchivedMessages([]);
+      setChatChanged(loadedChatIdRef.current !== undefined);
+      chatId.set(undefined);
+      description.set(undefined);
+      chatMetadata.set(undefined);
+    }
+
     if (!db) {
       setReady(true);
 
@@ -78,12 +107,16 @@ export function useChatHistory() {
         toast.error('Chat persistence is unavailable');
       }
 
-      return;
+      return cancelLoad;
     }
 
     if (mixedId) {
       Promise.all([getCachedMessages(db, mixedId), getCachedSnapshot(db, mixedId)])
         .then(async ([storedMessages, snapshot]) => {
+          if (!isCurrentLoad()) {
+            return;
+          }
+
           if (storedMessages && storedMessages.messages.length > 0) {
             /*
              * Keyed on the persisted record, not on the route. The effect also
@@ -91,71 +124,84 @@ export function useChatHistory() {
              * chat, and those must not empty the project.
              */
             const switchedChat = loadedChatIdRef.current !== storedMessages.id;
-            loadedChatIdRef.current = storedMessages.id;
+            pendingWorkbenchTransitionsRef.current += 1;
 
-            /*
-             * Emptied before anything of the incoming chat is written, so the
-             * messages, the artifacts and the container never describe different
-             * chats.
-             */
-            if (switchedChat) {
-              await workbenchStore.resetWorkbench();
-            }
+            const load = workbenchLoadQueueRef.current
+              .catch(() => undefined)
+              .then(async () => {
+                if (!isCurrentLoad()) {
+                  return;
+                }
 
-            /*
-             * const snapshotStr = localStorage.getItem(`snapshot:${mixedId}`); // Remove localStorage usage
-             * const snapshot: Snapshot = snapshotStr ? JSON.parse(snapshotStr) : { chatIndex: 0, files: {} }; // Use snapshot from DB
-             */
-            const validSnapshot: Snapshot = snapshot || { chatIndex: '', files: {} }; // Ensure snapshot is not undefined
-            const summary = validSnapshot.summary;
+                /*
+                 * Emptied before anything of the incoming chat is written, so the
+                 * messages, the artifacts and the container never describe different
+                 * chats.
+                 */
+                if (switchedChat) {
+                  await workbenchStore.resetWorkbench();
 
-            const rewindId = searchParams.get('rewindTo');
+                  if (!isCurrentLoad()) {
+                    return;
+                  }
+                }
 
-            let startingIdx = -1;
+                /*
+                 * const snapshotStr = localStorage.getItem(`snapshot:${mixedId}`); // Remove localStorage usage
+                 * const snapshot: Snapshot = snapshotStr ? JSON.parse(snapshotStr) : { chatIndex: 0, files: {} }; // Use snapshot from DB
+                 */
+                const validSnapshot: Snapshot = snapshot || { chatIndex: '', files: {} }; // Ensure snapshot is not undefined
+                const summary = validSnapshot.summary;
 
-            const endingIdx = rewindId
-              ? storedMessages.messages.findIndex((m) => m.id === rewindId) + 1
-              : storedMessages.messages.length;
+                const rewindId = searchParams.get('rewindTo');
 
-            const snapshotIndex = storedMessages.messages.findIndex((m) => m.id === validSnapshot.chatIndex);
+                let startingIdx = -1;
 
-            if (snapshotIndex >= 0 && snapshotIndex < endingIdx) {
-              startingIdx = snapshotIndex;
-            }
+                const endingIdx = rewindId
+                  ? storedMessages.messages.findIndex((m) => m.id === rewindId) + 1
+                  : storedMessages.messages.length;
 
-            if (snapshotIndex > 0 && storedMessages.messages[snapshotIndex].id == rewindId) {
-              startingIdx = -1;
-            }
+                const snapshotIndex = storedMessages.messages.findIndex((m) => m.id === validSnapshot.chatIndex);
 
-            let filteredMessages = storedMessages.messages.slice(startingIdx + 1, endingIdx);
-            let archivedMessages: UIMessage[] = [];
+                if (snapshotIndex >= 0 && snapshotIndex < endingIdx) {
+                  startingIdx = snapshotIndex;
+                }
 
-            if (startingIdx >= 0) {
-              archivedMessages = storedMessages.messages.slice(0, startingIdx + 1);
-            }
+                if (snapshotIndex > 0 && storedMessages.messages[snapshotIndex].id == rewindId) {
+                  startingIdx = -1;
+                }
 
-            setArchivedMessages(archivedMessages);
+                let filteredMessages = storedMessages.messages.slice(startingIdx + 1, endingIdx);
+                let archivedMessages: UIMessage[] = [];
 
-            if (startingIdx > 0) {
-              const files = Object.entries(validSnapshot?.files || {})
-                .map(([key, value]) => {
-                  if (value?.type !== 'file') {
-                    return null;
+                if (startingIdx >= 0) {
+                  archivedMessages = storedMessages.messages.slice(0, startingIdx + 1);
+                }
+
+                if (startingIdx > 0) {
+                  const files = Object.entries(validSnapshot?.files || {})
+                    .map(([key, value]) => {
+                      if (value?.type !== 'file') {
+                        return null;
+                      }
+
+                      return {
+                        content: value.content,
+                        path: key,
+                      };
+                    })
+                    .filter((x): x is { content: string; path: string } => !!x); // Type assertion
+
+                  const projectCommands = await detectProjectCommands(files);
+
+                  if (!isCurrentLoad()) {
+                    return;
                   }
 
-                  return {
-                    content: value.content,
-                    path: key,
-                  };
-                })
-                .filter((x): x is { content: string; path: string } => !!x); // Type assertion
+                  // Call the modified function to get only the command actions string
+                  const commandActionsString = createCommandActionsString(projectCommands);
 
-              const projectCommands = await detectProjectCommands(files);
-
-              // Call the modified function to get only the command actions string
-              const commandActionsString = createCommandActionsString(projectCommands);
-
-              const restoredAssistantText = `Bolt Restored your chat from a snapshot. You can revert this message to load the full chat history.
+                  const restoredAssistantText = `Bolt Restored your chat from a snapshot. You can revert this message to load the full chat history.
                   <boltArtifact id="restored-project-setup" title="Restored Project & Setup" type="bundled">
                   ${Object.entries(snapshot?.files || {})
                     .map(([key, value]) => {
@@ -174,96 +220,147 @@ ${value.content}
                   </boltArtifact>
                   `;
 
-              const restoredSummary = summary
-                ? [
-                    {
-                      chatId: storedMessages.messages[snapshotIndex].id,
-                      type: 'chatSummary',
-                      summary,
-                    } satisfies ContextAnnotation,
-                  ]
-                : [];
-
-              /*
-               * Both shapes written. `annotations` still carries the v4 sentinels
-               * and the summary because the v4 readers have not moved yet;
-               * metadata.flags and the data-chatSummary part are what v5 reads.
-               */
-              const restoredParts: AnyPart[] = [
-                { type: 'text', text: restoredAssistantText },
-                ...(summary
-                  ? [
-                      {
-                        type: 'data-chatSummary',
-                        data: {
+                  const restoredSummary = summary
+                    ? [
+                        {
                           chatId: storedMessages.messages[snapshotIndex].id,
+                          type: 'chatSummary',
                           summary,
-                        },
-                      },
-                    ]
-                  : []),
-              ];
-
-              filteredMessages = [
-                createMessage({
-                  id: generateId(),
-                  role: 'user',
-                  text: `Restore project from snapshot`,
-                  flags: ['no-store', 'hidden'],
-                }) as UIMessage,
-                {
-                  ...(createMessage({
-                    id: storedMessages.messages[snapshotIndex].id,
-                    role: 'assistant',
-                    text: restoredAssistantText,
-                    flags: ['no-store'],
-                  }) as UIMessage),
+                        } satisfies ContextAnnotation,
+                      ]
+                    : [];
 
                   /*
-                   * v5 removed UIMessage.annotations, so the summary now travels
-                   * as a data-chatSummary part (above) and the 'no-store' flag
-                   * as metadata.flags (set by createMessage). The legacy
-                   * `annotations` mirror is preserved so a downgrade still
-                   * works, which is why this object literal is cast.
+                   * Both shapes written. `annotations` still carries the v4 sentinels
+                   * and the summary because the v4 readers have not moved yet;
+                   * metadata.flags and the data-chatSummary part are what v5 reads.
                    */
-                  parts: restoredParts as unknown as UIMessage['parts'],
-                  annotations: ['no-store', ...restoredSummary],
-                } as unknown as UIMessage,
+                  const restoredParts: AnyPart[] = [
+                    { type: 'text', text: restoredAssistantText },
+                    ...(summary
+                      ? [
+                          {
+                            type: 'data-chatSummary',
+                            data: {
+                              chatId: storedMessages.messages[snapshotIndex].id,
+                              summary,
+                            },
+                          },
+                        ]
+                      : []),
+                  ];
 
-                ...filteredMessages,
-              ];
-              restoreSnapshot(mixedId, validSnapshot);
-            }
+                  filteredMessages = [
+                    createMessage({
+                      id: generateId(),
+                      role: 'user',
+                      text: `Restore project from snapshot`,
+                      flags: ['no-store', 'hidden'],
+                    }) as UIMessage,
+                    {
+                      ...(createMessage({
+                        id: storedMessages.messages[snapshotIndex].id,
+                        role: 'assistant',
+                        text: restoredAssistantText,
+                        flags: ['no-store'],
+                      }) as UIMessage),
 
-            setChatChanged(switchedChat);
-            setInitialMessages(filteredMessages);
+                      /*
+                       * v5 removed UIMessage.annotations, so the summary now travels
+                       * as a data-chatSummary part (above) and the 'no-store' flag
+                       * as metadata.flags (set by createMessage). The legacy
+                       * `annotations` mirror is preserved so a downgrade still
+                       * works, which is why this object literal is cast.
+                       */
+                      parts: restoredParts as unknown as UIMessage['parts'],
+                      annotations: ['no-store', ...restoredSummary],
+                    } as unknown as UIMessage,
 
-            setUrlId(storedMessages.urlId);
-            description.set(storedMessages.description);
-            chatId.set(storedMessages.id);
-            chatMetadata.set(storedMessages.metadata);
-          } else {
-            navigate('/', { replace: true });
+                    ...filteredMessages,
+                  ];
+                  await restoreSnapshot(mixedId, validSnapshot, isCurrentLoad);
+
+                  if (!isCurrentLoad()) {
+                    return;
+                  }
+                }
+
+                if (!isCurrentLoad()) {
+                  return;
+                }
+
+                loadedChatIdRef.current = storedMessages.id;
+                setArchivedMessages(archivedMessages);
+                setChatChanged(switchedChat);
+                setInitialMessages(filteredMessages);
+
+                setUrlId(storedMessages.urlId);
+                description.set(storedMessages.description);
+                chatId.set(storedMessages.id);
+                chatMetadata.set(storedMessages.metadata);
+                loadedRouteIdRef.current = mixedId;
+                setReady(true);
+              })
+              .finally(() => {
+                pendingWorkbenchTransitionsRef.current = Math.max(0, pendingWorkbenchTransitionsRef.current - 1);
+              });
+
+            workbenchLoadQueueRef.current = load;
+
+            await load;
+
+            return;
           }
 
+          navigate('/', { replace: true });
           setReady(true);
         })
         .catch((error) => {
+          if (!isCurrentLoad()) {
+            return;
+          }
+
           console.error(error);
 
           logStore.logError('Failed to load chat messages or snapshot', error); // Updated error message
           toast.error('Failed to load chat: ' + error.message); // More specific error
+          setReady(true);
         });
     } else {
       // Clean reset when switching to a fresh chat (e.g., /)
-      const leftChat = loadedChatIdRef.current !== undefined;
+      const leftChat = loadedChatIdRef.current !== undefined || pendingWorkbenchTransitionsRef.current > 0;
 
       if (leftChat) {
-        loadedChatIdRef.current = undefined;
+        setReady(false);
+        pendingWorkbenchTransitionsRef.current += 1;
 
-        void workbenchStore.resetWorkbench().catch((error) => {
-          logStore.logError('Failed to empty the workbench', error);
-        });
+        const reset = workbenchLoadQueueRef.current
+          .catch(() => undefined)
+          .then(async () => {
+            if (!isCurrentLoad()) {
+              return;
+            }
+
+            try {
+              await workbenchStore.resetWorkbench();
+            } catch (error) {
+              if (isCurrentLoad()) {
+                logStore.logError('Failed to empty the workbench', error);
+              }
+            }
+          })
+          .finally(() => {
+            pendingWorkbenchTransitionsRef.current = Math.max(0, pendingWorkbenchTransitionsRef.current - 1);
+
+            if (isCurrentLoad()) {
+              setReady(true);
+            }
+          });
+        workbenchLoadQueueRef.current = reset;
+        loadedChatIdRef.current = undefined;
+        loadedRouteIdRef.current = undefined;
+      } else {
+        setReady(true);
       }
 
       setChatChanged(leftChat);
@@ -273,15 +370,14 @@ ${value.content}
       description.set(undefined);
       chatId.set(undefined);
       chatMetadata.set(undefined);
-      setReady(true);
     }
+
+    return cancelLoad;
   }, [mixedId, db, navigate, searchParams]); // Added db, navigate, searchParams dependencies
 
   const takeSnapshot = useCallback(
-    async (chatIdx: string, files: FileMap, _chatId?: string | undefined, chatSummary?: string) => {
-      const id = chatId.get();
-
-      if (!id || !db) {
+    async (id: string, chatIdx: string, files: FileMap, chatSummary?: string) => {
+      if (!db) {
         return;
       }
 
@@ -302,41 +398,60 @@ ${value.content}
     [db],
   );
 
-  const restoreSnapshot = useCallback(async (id: string, snapshot?: Snapshot) => {
-    // const snapshotStr = localStorage.getItem(`snapshot:${id}`); // Remove localStorage usage
-    const container = await webcontainer;
+  const restoreSnapshot = useCallback(
+    async (id: string, snapshot?: Snapshot, isCurrent: () => boolean = () => true) => {
+      // const snapshotStr = localStorage.getItem(`snapshot:${id}`); // Remove localStorage usage
+      const container = await webcontainer;
 
-    const validSnapshot = snapshot || { chatIndex: '', files: {} };
-
-    if (!validSnapshot?.files) {
-      return;
-    }
-
-    Object.entries(validSnapshot.files).forEach(async ([key, value]) => {
-      if (key.startsWith(container.workdir)) {
-        key = key.replace(container.workdir, '');
+      if (!isCurrent()) {
+        return;
       }
 
-      if (value?.type === 'folder') {
-        await container.fs.mkdir(key, { recursive: true });
+      const validSnapshot = snapshot || { chatIndex: '', files: {} };
+
+      if (!validSnapshot?.files) {
+        return;
       }
-    });
-    Object.entries(validSnapshot.files).forEach(async ([key, value]) => {
-      if (value?.type === 'file') {
+
+      for (const [originalKey, value] of Object.entries(validSnapshot.files)) {
+        if (!isCurrent()) {
+          return;
+        }
+
+        let key = originalKey;
+
         if (key.startsWith(container.workdir)) {
           key = key.replace(container.workdir, '');
         }
 
-        await container.fs.writeFile(key, value.content, { encoding: value.isBinary ? undefined : 'utf8' });
-      } else {
+        if (value?.type === 'folder') {
+          await container.fs.mkdir(key, { recursive: true });
+        }
       }
-    });
 
-    // workbenchStore.files.setKey(snapshot?.files)
-  }, []);
+      for (const [originalKey, value] of Object.entries(validSnapshot.files)) {
+        if (!isCurrent()) {
+          return;
+        }
+
+        let key = originalKey;
+
+        if (value?.type === 'file') {
+          if (key.startsWith(container.workdir)) {
+            key = key.replace(container.workdir, '');
+          }
+
+          await container.fs.writeFile(key, value.content, { encoding: value.isBinary ? undefined : 'utf8' });
+        }
+      }
+
+      // workbenchStore.files.setKey(snapshot?.files)
+    },
+    [],
+  );
 
   return {
-    ready: !mixedId || ready,
+    ready,
     initialMessages,
     chatChanged,
     updateChatMestaData: async (metadata: IChatMetadata) => {
@@ -359,16 +474,45 @@ ${value.content}
         return;
       }
 
+      const saveGeneration = loadGenerationRef.current;
+      const saveRouteId = currentRouteIdRef.current;
+      const saveChatId = chatId.get();
+      const saveInitialMessages = initialMessages;
+      const saveArchivedMessages = archivedMessages;
+      const saveUrlId = urlId;
+      const capturedDescription = description.get();
+      const saveMetadata = chatMetadata.get();
+      const saveFiles = workbenchStore.files.get();
+
+      let expectedSelfRoute: string | undefined;
+      let routeToNavigate: string | undefined;
+
+      const ownsCurrentChat = () =>
+        (effectActiveRef.current &&
+          currentRouteIdRef.current === saveRouteId &&
+          (loadGenerationRef.current === saveGeneration || loadedRouteIdRef.current === saveRouteId)) ||
+        (effectActiveRef.current && expectedSelfRoute !== undefined && currentRouteIdRef.current === expectedSelfRoute);
+      const mayUpdateCurrentState = () =>
+        ownsCurrentChat() && (saveChatId === undefined ? chatId.get() === undefined : chatId.get() === saveChatId);
+
       const { firstArtifact } = workbenchStore;
       messages = messages.filter((m) => !hasMessageFlag(m, 'no-store'));
 
-      let _urlId = urlId;
+      if (messages.length === 0) {
+        return;
+      }
 
-      if (!urlId && firstArtifact?.id) {
-        const urlId = await getUrlId(db, firstArtifact.id);
-        _urlId = urlId;
-        navigateChat(urlId);
-        setUrlId(urlId);
+      let _urlId = saveUrlId;
+
+      if (!saveUrlId && firstArtifact?.id) {
+        const resolvedUrlId = await getUrlId(db, firstArtifact.id);
+        _urlId = resolvedUrlId;
+
+        if (mayUpdateCurrentState()) {
+          expectedSelfRoute = resolvedUrlId;
+          routeToNavigate = resolvedUrlId;
+          setUrlId(resolvedUrlId);
+        }
       }
 
       let chatSummary: string | undefined = undefined;
@@ -385,32 +529,38 @@ ${value.content}
         }
       }
 
-      takeSnapshot(messages[messages.length - 1].id, workbenchStore.files.get(), _urlId, chatSummary);
+      let saveDescription = capturedDescription;
 
-      if (!description.get() && firstArtifact?.title) {
-        description.set(firstArtifact?.title);
+      if (!saveDescription && firstArtifact?.title) {
+        saveDescription = firstArtifact.title;
+
+        if (mayUpdateCurrentState()) {
+          description.set(saveDescription);
+        }
       }
 
-      // Ensure chatId.get() is used here as well
-      if (initialMessages.length === 0 && !chatId.get()) {
-        const nextId = await getNextId(db);
+      let finalChatId = saveChatId;
 
-        chatId.set(nextId);
+      if (saveInitialMessages.length === 0 && !saveChatId) {
+        finalChatId = await getNextId(db);
 
         /*
          * Claimed before navigating: the messages on screen already belong to
          * this chat, so the re-run that the new route triggers must not be read
          * as a switch away from it.
          */
-        loadedChatIdRef.current = nextId;
+        if (mayUpdateCurrentState()) {
+          chatId.set(finalChatId);
+          loadedChatIdRef.current = finalChatId;
 
-        if (!urlId) {
-          navigateChat(nextId);
+          if (!_urlId) {
+            expectedSelfRoute = finalChatId;
+            routeToNavigate = finalChatId;
+          } else if (expectedSelfRoute) {
+            routeToNavigate = expectedSelfRoute;
+          }
         }
       }
-
-      // Ensure chatId.get() is used for the final setMessages call
-      const finalChatId = chatId.get();
 
       if (!finalChatId) {
         console.error('Cannot save messages, chat ID is not set.');
@@ -422,12 +572,26 @@ ${value.content}
       await setMessages(
         db,
         finalChatId, // Use the potentially updated chatId
-        [...archivedMessages, ...messages],
-        urlId,
-        description.get(),
+        [...saveArchivedMessages, ...messages],
+        saveUrlId ?? _urlId,
+        saveDescription,
         undefined,
-        chatMetadata.get(),
+        saveMetadata,
       );
+
+      const stillOwnsSavedChat =
+        effectActiveRef.current &&
+        ((currentRouteIdRef.current === saveRouteId &&
+          (loadGenerationRef.current === saveGeneration || loadedRouteIdRef.current === saveRouteId) &&
+          (saveChatId === undefined ? chatId.get() === finalChatId : chatId.get() === saveChatId)) ||
+          (expectedSelfRoute !== undefined && currentRouteIdRef.current === expectedSelfRoute));
+
+      if (routeToNavigate && stillOwnsSavedChat) {
+        loadedRouteIdRef.current = routeToNavigate;
+        navigateChat(routeToNavigate);
+      }
+
+      void takeSnapshot(finalChatId, messages[messages.length - 1].id, saveFiles, chatSummary);
 
       invalidateChatCache(finalChatId);
 

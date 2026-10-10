@@ -61,3 +61,4 @@ test-results
 test-results.json
 test-results-summary.txt
 /performance-profiles/
+/coverage/

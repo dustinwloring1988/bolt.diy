@@ -27,38 +27,24 @@ jobs:
         uses: ./.github/actions/setup-and-build
 
       - name: Check for duplicate dependencies
-        run: |
-          echo "Checking for duplicate dependencies..."
-          pnpm dedupe --check || echo "✅ Duplicate dependency check completed"
+        run: pnpm dedupe --check
 
       - name: Check bundle size
         run: |
           pnpm run build
-          echo "Bundle analysis completed (bundlesize tool requires configuration)"
-        continue-on-error: true
+          pnpm run perf:analyze
 
       - name: Dead code elimination check
-        run: |
-          echo "Checking for unused imports and dead code..."
-          npx unimported || echo "Unimported tool completed with warnings"
-        continue-on-error: true
+        run: npx unimported
 
       - name: Check for unused dependencies
-        run: |
-          echo "Checking for unused dependencies..."
-          npx depcheck --config .depcheckrc.json || echo "Dependency check completed with findings"
-        continue-on-error: true
+        run: npx depcheck --config .depcheckrc.json
 
       - name: Check package.json formatting
-        run: |
-          echo "Checking package.json formatting..."
-          npx sort-package-json package.json --check || echo "Package.json formatting check completed"
-        continue-on-error: true
+        run: npx sort-package-json package.json --check
 
       - name: Generate complexity report
-        run: |
-          echo "Analyzing code complexity..."
-          npx es6-plato -r -d complexity-report app/ || echo "Complexity analysis completed"
+        run: npx es6-plato -r -d complexity-report app/
         continue-on-error: true
 
       - name: Upload complexity report
@@ -90,10 +76,7 @@ jobs:
           CI: true
 
       - name: Run accessibility tests with axe
-        run: |
-          echo "Running accessibility tests..."
-          npx @axe-core/cli http://localhost:5173 --exit || echo "Accessibility tests completed with findings"
-        continue-on-error: true
+        run: npx @axe-core/cli http://localhost:5173 --exit
 
   performance-audit:
     name: Performance Audit
@@ -114,10 +97,7 @@ jobs:
           sleep 20
 
       - name: Run Lighthouse audit
-        run: |
-          echo "Running Lighthouse performance audit..."
-          npx lighthouse http://localhost:5173 --output-path=./lighthouse-report.html --output=html --chrome-flags="--headless --no-sandbox" || echo "Lighthouse audit completed"
-        continue-on-error: true
+        run: npx lighthouse http://localhost:5173 --output-path=./lighthouse-report.html --output=html --chrome-flags="--headless --no-sandbox"
 
       - name: Upload Lighthouse report
         uses: actions/upload-artifact@v7

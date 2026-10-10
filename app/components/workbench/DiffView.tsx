@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { diffLines, type Change } from 'diff';
 import { memo, useMemo, useState, useEffect, useCallback } from 'react';
+import { List, type RowComponentProps } from 'react-window';
 import { createHighlighter } from 'shiki';
 import type { EditorDocument } from '~/components/editor/codemirror/CodeMirrorEditor';
 import type { FileMap } from '~/lib/stores/files';
@@ -346,6 +347,41 @@ const renderContentWarning = (type: 'binary' | 'error') => (
   </div>
 );
 
+interface NoChangesRowProps {
+  lines: string[];
+  highlighter: any;
+  language: string;
+  theme: string;
+}
+
+const NoChangesRow = ({ index, style, lines, highlighter, language, theme }: RowComponentProps<NoChangesRowProps>) => {
+  const line = lines[index];
+
+  return (
+    <div style={style} className="flex group min-w-fit">
+      <div className={lineNumberStyles}>{index + 1}</div>
+      <div className={lineContentStyles}>
+        <span className="mr-2"> </span>
+        {highlighter ? (
+          <span
+            dangerouslySetInnerHTML={{
+              __html: highlighter
+                .codeToHtml(line, {
+                  lang: language,
+                  theme: theme === 'dark' ? 'github-dark' : 'github-light',
+                })
+                .replace(/<\/?pre[^>]*>/g, '')
+                .replace(/<\/?code[^>]*>/g, ''),
+            }}
+          />
+        ) : (
+          <span>{line}</span>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const NoChangesView = memo(
   ({
     beforeCode,
@@ -357,43 +393,33 @@ const NoChangesView = memo(
     language: string;
     highlighter: any;
     theme: string;
-  }) => (
-    <div className="h-full flex flex-col items-center justify-center p-4">
-      <div className="text-center text-bolt-elements-textTertiary">
-        <div className="i-ph:files text-4xl text-green-400 mb-2 mx-auto" />
-        <p className="font-medium text-bolt-elements-textPrimary">Files are identical</p>
-        <p className="text-sm mt-1">Both versions match exactly</p>
-      </div>
-      <div className="mt-4 w-full max-w-2xl bg-bolt-elements-background-depth-1 rounded-lg border border-bolt-elements-borderColor overflow-hidden">
-        <div className="p-2 text-xs font-bold text-bolt-elements-textTertiary border-b border-bolt-elements-borderColor">
-          Current Content
+  }) => {
+    const lines = useMemo(() => beforeCode.split('\n'), [beforeCode]);
+
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-4">
+        <div className="text-center text-bolt-elements-textTertiary">
+          <div className="i-ph:files text-4xl text-green-400 mb-2 mx-auto" />
+          <p className="font-medium text-bolt-elements-textPrimary">Files are identical</p>
+          <p className="text-sm mt-1">Both versions match exactly</p>
         </div>
-        <div className="overflow-auto max-h-96">
-          {beforeCode.split('\n').map((line, index) => (
-            <div key={index} className="flex group min-w-fit">
-              <div className={lineNumberStyles}>{index + 1}</div>
-              <div className={lineContentStyles}>
-                <span className="mr-2"> </span>
-                <span
-                  dangerouslySetInnerHTML={{
-                    __html: highlighter
-                      ? highlighter
-                          .codeToHtml(line, {
-                            lang: language,
-                            theme: theme === 'dark' ? 'github-dark' : 'github-light',
-                          })
-                          .replace(/<\/?pre[^>]*>/g, '')
-                          .replace(/<\/?code[^>]*>/g, '')
-                      : line,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
+        <div className="mt-4 w-full max-w-2xl bg-bolt-elements-background-depth-1 rounded-lg border border-bolt-elements-borderColor overflow-hidden">
+          <div className="p-2 text-xs font-bold text-bolt-elements-textTertiary border-b border-bolt-elements-borderColor">
+            Current Content
+          </div>
+          <List
+            rowComponent={NoChangesRow}
+            rowCount={lines.length}
+            rowHeight={28}
+            rowProps={{ lines, highlighter, language, theme }}
+            defaultHeight={384}
+            overscanCount={8}
+            style={{ width: '100%', height: 384 }}
+          />
         </div>
       </div>
-    </div>
-  ),
+    );
+  },
 );
 
 // Otimização do processamento de diferenças com memoização
@@ -402,7 +428,7 @@ const useProcessChanges = (beforeCode: string, afterCode: string) => {
 };
 
 // Componente otimizado para renderização de linhas de código
-const CodeLine = memo(
+export const CodeLine = memo(
   ({
     lineNumber,
     content,
@@ -424,12 +450,15 @@ const CodeLine = memo(
 
     const renderContent = () => {
       if (type === 'unchanged' || !block.charChanges) {
+        if (!highlighter) {
+          return <span>{content}</span>;
+        }
+
         const highlightedCode = highlighter
-          ? highlighter
-              .codeToHtml(content, { lang: language, theme: theme === 'dark' ? 'github-dark' : 'github-light' })
-              .replace(/<\/?pre[^>]*>/g, '')
-              .replace(/<\/?code[^>]*>/g, '')
-          : content;
+          .codeToHtml(content, { lang: language, theme: theme === 'dark' ? 'github-dark' : 'github-light' })
+          .replace(/<\/?pre[^>]*>/g, '')
+          .replace(/<\/?code[^>]*>/g, '');
+
         return <span dangerouslySetInnerHTML={{ __html: highlightedCode }} />;
       }
 
@@ -438,15 +467,21 @@ const CodeLine = memo(
           {block.charChanges.map((change, index) => {
             const changeClass = changeColorStyles[change.type];
 
+            if (!highlighter) {
+              return (
+                <span key={index} className={changeClass}>
+                  {change.value}
+                </span>
+              );
+            }
+
             const highlightedCode = highlighter
-              ? highlighter
-                  .codeToHtml(change.value, {
-                    lang: language,
-                    theme: theme === 'dark' ? 'github-dark' : 'github-light',
-                  })
-                  .replace(/<\/?pre[^>]*>/g, '')
-                  .replace(/<\/?code[^>]*>/g, '')
-              : change.value;
+              .codeToHtml(change.value, {
+                lang: language,
+                theme: theme === 'dark' ? 'github-dark' : 'github-light',
+              })
+              .replace(/<\/?pre[^>]*>/g, '')
+              .replace(/<\/?code[^>]*>/g, '');
 
             return <span key={index} className={changeClass} dangerouslySetInnerHTML={{ __html: highlightedCode }} />;
           })}
@@ -469,6 +504,31 @@ const CodeLine = memo(
     );
   },
 );
+
+interface DiffRowProps {
+  blocks: DiffBlock[];
+  highlighter: any;
+  language: string;
+  theme: string;
+}
+
+const VirtualDiffRow = ({ index, style, blocks, highlighter, language, theme }: RowComponentProps<DiffRowProps>) => {
+  const block = blocks[index];
+
+  return (
+    <div style={style}>
+      <CodeLine
+        lineNumber={block.lineNumber}
+        content={block.content}
+        type={block.type}
+        highlighter={highlighter}
+        language={language}
+        block={block}
+        theme={theme}
+      />
+    </div>
+  );
+};
 
 // Componente para exibir informações sobre o arquivo
 const FileInfo = memo(
@@ -638,20 +698,15 @@ const InlineDiffComparison = memo(({ beforeCode, afterCode, filename, language }
         />
         <div className={diffPanelStyles}>
           {hasChanges ? (
-            <div className="overflow-x-auto min-w-full">
-              {unifiedBlocks.map((block, index) => (
-                <CodeLine
-                  key={`${block.lineNumber}-${index}`}
-                  lineNumber={block.lineNumber}
-                  content={block.content}
-                  type={block.type}
-                  highlighter={highlighter} // Pass the shared instance
-                  language={language}
-                  block={block}
-                  theme={theme}
-                />
-              ))}
-            </div>
+            <List
+              rowComponent={VirtualDiffRow}
+              rowCount={unifiedBlocks.length}
+              rowHeight={28}
+              rowProps={{ blocks: unifiedBlocks, highlighter, language, theme }}
+              defaultHeight={600}
+              overscanCount={12}
+              style={{ height: '100%', width: '100%' }}
+            />
           ) : (
             <NoChangesView beforeCode={beforeCode} language={language} highlighter={highlighter} theme={theme} />
           )}

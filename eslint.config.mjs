@@ -4,7 +4,15 @@ import { getNamingConventionRule, tsFileExtensions } from '@blitz/eslint-plugin/
 
 export default [
   {
-    ignores: ['**/dist', '**/node_modules', '**/.wrangler', '**/bolt/build', '**/.history'],
+    ignores: [
+      '**/dist/**',
+      '**/build/**',
+      '**/node_modules/**',
+      '**/.wrangler/**',
+      '**/.react-router/**',
+      '**/.history/**',
+      '**/coverage/**',
+    ],
   },
   ...blitzPlugin.configs.recommended(),
   {
@@ -52,6 +60,31 @@ export default [
           ],
         },
       ],
+    },
+  },
+  {
+    files: ['**/*.test.{js,mjs,cjs,ts,tsx}', '**/*.spec.{js,mjs,cjs,ts,tsx}', 'tests/**/*', 'e2e-tests/**/*'],
+    rules: {
+      'no-restricted-imports': 'off',
+      'import/order': 'off',
+      'multiline-comment-style': 'off',
+      'padding-line-between-statements': 'off',
+      'prettier/prettier': 'off',
+      '@blitz/lines-around-comment': 'off',
+    },
+  },
+  {
+    files: ['workers/**/*'],
+    rules: {
+      'multiline-comment-style': 'off',
+      '@blitz/lines-around-comment': 'off',
+    },
+  },
+  {
+    files: ['tests/setup.ts'],
+    rules: {
+      '@typescript-eslint/no-namespace': 'off',
+      '@typescript-eslint/no-empty-function': 'off',
     },
   },
 ];

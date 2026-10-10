@@ -50,6 +50,7 @@ ARG DEFAULT_NUM_CTX
 
 # Set non-sensitive environment variables
 ENV WRANGLER_SEND_METRICS=false \
+    CLOUDFLARE_INCLUDE_PROCESS_ENV=true \
     VITE_LOG_LEVEL=${VITE_LOG_LEVEL} \
     DEFAULT_NUM_CTX=${DEFAULT_NUM_CTX} \
     RUNNING_IN_DOCKER=true
@@ -66,6 +67,9 @@ COPY --from=prod-deps /app/build /app/build
 COPY --from=prod-deps /app/node_modules /app/node_modules
 COPY --from=prod-deps /app/package.json /app/package.json
 COPY --from=prod-deps /app/wrangler.jsonc /app/wrangler.jsonc
+
+# Local Wrangler variable files must not override the container's runtime environment.
+RUN rm -f /app/build/server/.dev.vars
 
 # Pre-configure wrangler to disable metrics
 RUN mkdir -p /root/.config/.wrangler && \

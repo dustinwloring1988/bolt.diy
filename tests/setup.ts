@@ -46,7 +46,7 @@ class WorkerMock {
         // Simulate actual syntax highlighting output with proper HTML
         // Include language in the output to make each language unique
         const languageClass = `language-${data.language || 'plaintext'}`;
-        const highlighted = `<pre class="shiki ${languageClass}" style="background-color:#1e1e1e"><code><span style="color:#9CDCFE">${this.escapeHtml(data.code)}</span></code></pre>`;
+        const highlighted = `<pre class="shiki ${languageClass}" style="background-color:#1e1e1e"><code><span style="color:#9CDCFE">${this._escapeHtml(data.code)}</span></code></pre>`;
         
         const event = new MessageEvent('message', {
           data: {
@@ -59,9 +59,10 @@ class WorkerMock {
     }, 0);
   }
 
-  private escapeHtml(text: string): string {
+  private _escapeHtml(text: string): string {
     const div = document.createElement('div');
     div.textContent = text;
+
     return div.innerHTML;
   }
 
@@ -71,6 +72,7 @@ class WorkerMock {
     }
   }
 
+  // These methods are intentionally empty in the Worker test double.
   removeEventListener() {}
 
   terminate() {}

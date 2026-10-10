@@ -1,4 +1,3 @@
-/* eslint-disable consistent-return */
 /**
  * Syntax Highlighting Worker
  * Moves expensive syntax highlighting off the main thread
@@ -10,8 +9,7 @@
 import { createHighlighter, type Highlighter, type BundledLanguage, type BundledTheme } from 'shiki';
 
 let highlighter: Highlighter | null = null;
-let isInitializing = false;
-let initQueue: Array<() => void> = [];
+let initPromise: Promise<void> | null = null;
 
 // Most commonly used languages - load these by default
 const DEFAULT_LANGUAGES: BundledLanguage[] = [
@@ -49,34 +47,28 @@ interface HighlightResponse {
 /**
  * Initialize the highlighter
  */
-async function initHighlighter(): Promise<void> {
+function initHighlighter(): Promise<void> {
   if (highlighter) {
-    return;
+    return Promise.resolve();
   }
 
-  if (isInitializing) {
-    return new Promise((resolve) => {
-      initQueue.push(resolve);
+  if (initPromise) {
+    return initPromise;
+  }
+
+  initPromise = createHighlighter({
+    themes: DEFAULT_THEMES,
+    langs: DEFAULT_LANGUAGES,
+  })
+    .then((instance) => {
+      highlighter = instance;
+    })
+    .finally(() => {
+      // A failed initialization can be retried by later messages.
+      initPromise = null;
     });
-  }
 
-  isInitializing = true;
-
-  try {
-    highlighter = await createHighlighter({
-      themes: DEFAULT_THEMES,
-      langs: DEFAULT_LANGUAGES,
-    });
-
-    // Notify all waiting requests
-    initQueue.forEach((resolve) => resolve());
-    initQueue = [];
-  } catch (error) {
-    console.error('Failed to initialize highlighter:', error);
-    throw error;
-  } finally {
-    isInitializing = false;
-  }
+  return initPromise;
 }
 
 /**
@@ -97,10 +89,14 @@ async function highlightCode(
 
   try {
     // Ensure the language is loaded
-    const loadedLanguages = highlighter.getLoadedLanguages();
+    const isSpecialLanguage = ['ansi', 'plaintext', 'plain', 'text', 'txt'].includes(language);
 
-    if (!loadedLanguages.includes(language)) {
-      await highlighter.loadLanguage(language);
+    if (!isSpecialLanguage) {
+      const loadedLanguages = highlighter.getLoadedLanguages();
+
+      if (!loadedLanguages.includes(language)) {
+        await highlighter.loadLanguage(language);
+      }
     }
 
     // Ensure the theme is loaded

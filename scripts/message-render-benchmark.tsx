@@ -1,6 +1,6 @@
 import React from 'react';
-import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import { AssistantMessage } from '~/components/chat/AssistantMessage';
 import { UserMessage } from '~/components/chat/UserMessage';
 
@@ -29,6 +29,7 @@ window.runMessageRenderBenchmark = (messageCount) => {
       />
     );
   });
+
   const start = performance.now();
 
   flushSync(() => root.render(<div>{messages}</div>));

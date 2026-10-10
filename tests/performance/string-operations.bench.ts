@@ -42,8 +42,6 @@ describe('String Processing - V8 Optimization', () => {
 });
 
 describe('String Manipulation', () => {
-  const longString = 'A'.repeat(10000);
-
   it('should benchmark concatenation methods', () => {
     const plusStart = performance.now();
     let result1 = '';

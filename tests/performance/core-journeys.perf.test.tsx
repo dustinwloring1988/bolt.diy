@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { performanceMonitor } from '~/lib/performance/metrics';
 
 // Performance budgets (in milliseconds)
@@ -42,7 +42,7 @@ describe('Core Journey Performance', () => {
     const start = performance.now();
 
     // Simulate composer mount
-    const { container } = render(
+    render(
       <textarea
         data-testid="composer-textarea"
         placeholder="How can I help you?"
@@ -154,6 +154,7 @@ for (let i = 0; i < 20; i++) {
 
     // Each render should take less than 1ms on average
     expect(avgPerRender).toBeLessThan(1);
+    expect(renderCount).toBe(101);
     console.log(`✓ 100 re-renders: ${duration.toFixed(2)}ms total, ${avgPerRender.toFixed(2)}ms avg`);
   });
 });
@@ -182,7 +183,7 @@ describe('Layout Stability', () => {
   });
 
   it('sidebar does not shift on data load', async () => {
-    const { container } = render(
+    const { container, rerender } = render(
       <div>
         <div data-testid="sidebar" style={{ width: '260px' }}>
           <div>Loading...</div>
@@ -194,7 +195,7 @@ describe('Layout Stability', () => {
     const initialRect = sidebar?.getBoundingClientRect();
 
     // Simulate data loading
-    const { rerender } = render(
+    rerender(
       <div>
         <div data-testid="sidebar" style={{ width: '260px' }}>
           <div>Chat 1</div>
@@ -261,6 +262,7 @@ describe('Instruction Count Benchmarks', () => {
 
     // Should be nearly instant for 100 messages
     expect(duration).toBeLessThan(10);
+    expect(Object.keys(tree)).toHaveLength(100);
     console.log(`✓ Message tree assembly (100 items): ${duration.toFixed(2)}ms`);
   });
 

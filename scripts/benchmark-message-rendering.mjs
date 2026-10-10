@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { createServer } from 'vite';
 
 const benchmarkPath = '/__message-render-benchmark';
+
 const vite = await createServer({
   appType: 'custom',
   mode: 'test',
@@ -24,6 +25,7 @@ const vite = await createServer({
 });
 
 await vite.listen();
+
 const address = vite.httpServer.address();
 
 if (!address || typeof address === 'string') {
