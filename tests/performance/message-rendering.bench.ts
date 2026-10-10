@@ -96,10 +96,16 @@ describe('Message List Operations', () => {
     };
     const appendTime = median('append');
     const updateTime = median('update');
+    const appendedMessages = operations.append();
+    const updatedMessages = operations.update();
 
     console.log(`Median append to 1000 items: ${appendTime.toFixed(4)}ms`);
     console.log(`Median update in 1000 items: ${updateTime.toFixed(4)}ms`);
     console.log(`Interleaved raw samples: ${JSON.stringify(samples)}`);
+    expect(appendedMessages).toHaveLength(1_001);
+    expect(appendedMessages[1_000].id).toBe('msg-1001');
+    expect(updatedMessages).toHaveLength(1_000);
+    expect(updatedMessages.find((message) => message.id === 'msg-500')?.content).toBe('Updated content');
     expect(messages).toHaveLength(1_000);
   });
 });
