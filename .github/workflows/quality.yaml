@@ -80,7 +80,7 @@ jobs:
           exit 1
 
       - name: Run accessibility tests with axe
-        run: npx @axe-core/cli http://localhost:5173 --exit --chrome-path "${{ steps.setup-chrome.outputs.chrome-path }}" --chromedriver-path "${{ steps.setup-chrome.outputs.chromedriver-path }}"
+        run: npx @axe-core/cli http://localhost:5173 --exit --chrome-options="no-sandbox,disable-setuid-sandbox,disable-dev-shm-usage" --chrome-path "${{ steps.setup-chrome.outputs.chrome-path }}" --chromedriver-path "${{ steps.setup-chrome.outputs.chromedriver-path }}"
 
   performance-audit:
     name: Performance Audit
