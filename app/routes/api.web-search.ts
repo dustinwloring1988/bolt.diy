@@ -25,7 +25,7 @@ const MAX_CONTENT_LENGTH = 8000;
 const MAX_REDIRECTS = 5;
 const MAX_RESPONSE_BYTES = 1_000_000;
 
-async function fetchPinnedNodeUrl(input: string): Promise<Response> {
+async function fetchPinnedNodeUrl(input: string, timeoutMs: number): Promise<Response> {
   const url = new URL(input);
 
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
@@ -58,7 +58,7 @@ async function fetchPinnedNodeUrl(input: string): Promise<Response> {
       url,
       {
         headers: FETCH_HEADERS,
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(timeoutMs),
         family: target.family,
         lookup: lookupPinned as never,
         ...(hostname.includes(':') || /^\d+(?:\.\d+){3}$/.test(hostname) ? {} : { servername: hostname }),
@@ -145,18 +145,26 @@ async function fetchPublicUrl(
 ): Promise<{ response: Response; finalUrl: string }> {
   let currentUrl = input;
 
+  const deadline = Date.now() + 10_000;
+
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     if (!isAllowedUrl(currentUrl)) {
       throw new Error('URL is not allowed. Only public HTTP/HTTPS URLs are accepted.');
     }
 
+    const remainingMs = deadline - Date.now();
+
+    if (remainingMs <= 0) {
+      throw new DOMException('Request timed out', 'TimeoutError');
+    }
+
     const response = isCloudflareWorker
       ? await fetch(currentUrl, {
           headers: FETCH_HEADERS,
-          signal: AbortSignal.timeout(10_000),
+          signal: AbortSignal.timeout(remainingMs),
           redirect: 'manual',
         })
-      : await fetchPinnedNodeUrl(currentUrl);
+      : await fetchPinnedNodeUrl(currentUrl, remainingMs);
 
     if (![301, 302, 303, 307, 308].includes(response.status)) {
       return { response, finalUrl: currentUrl };
@@ -515,7 +523,8 @@ export async function webSearchAction({ request, context }: ActionFunctionArgs) 
         return Response.json({ error: 'Search query cannot be empty' }, { status: 400 });
       }
 
-      const provider = body.provider === 'duckduckgo' ? 'duckduckgo' : 'exa';
+      let provider = body.provider === 'duckduckgo' ? 'duckduckgo' : 'exa';
+
       const numResults = Math.min(Math.max(Number(body.numResults) || 8, 1), 20);
 
       let results: Array<{ title: string; url: string; description: string }>;
@@ -528,6 +537,7 @@ export async function webSearchAction({ request, context }: ActionFunctionArgs) 
           // Fallback to DuckDuckGo if Exa fails
           console.warn('Exa search failed, falling back to DuckDuckGo:', exaErr);
           results = await duckduckgoSearch(query);
+          provider = 'duckduckgo';
         }
       } else {
         results = await duckduckgoSearch(query);

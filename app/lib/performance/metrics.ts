@@ -82,7 +82,7 @@ class PerformanceMonitor {
     try {
       performance.measure(measureName, startMarkName, endMarkName);
 
-      const measures = performance.getEntriesByName(measureName);
+      const measures = performance.getEntriesByName(measureName, 'measure');
       const measure = measures[measures.length - 1] as PerformanceMeasure | undefined;
 
       if (!measure) {
@@ -335,6 +335,7 @@ export const journeys = {
 };
 
 let webVitalsObserversStarted = false;
+let longTaskObserverStarted = false;
 
 // Web Vitals integration
 export function observeWebVitals() {
@@ -357,7 +358,13 @@ export function observeWebVitals() {
       console.warn('Failed to load web-vitals:', error);
     });
 
-  if (typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
+  if (
+    !longTaskObserverStarted &&
+    typeof PerformanceObserver !== 'undefined' &&
+    PerformanceObserver.supportedEntryTypes?.includes('longtask')
+  ) {
+    longTaskObserverStarted = true;
+
     const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
         performanceMonitor.recordMetric('main-thread:long-task', entry.duration, {

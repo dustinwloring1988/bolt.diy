@@ -26,18 +26,6 @@ const providers = [
 
 let rl = createInterface({ input, output });
 
-async function askRequired(question) {
-  while (true) {
-    const answer = (await rl.question(question)).trim();
-
-    if (answer) {
-      return answer;
-    }
-
-    console.log('Please enter a value.');
-  }
-}
-
 async function askSecret(question) {
   rl.close();
   output.write(question);
@@ -112,23 +100,6 @@ async function askChoice(question, min, max) {
   }
 }
 
-async function askYesNo(question) {
-  while (true) {
-    let answer;
-
-    try {
-      answer = (await rl.question(`${question} (y/n): `)).trim().toLowerCase();
-    } catch (error) {
-      if (input.readableEnded) return false;
-      throw error;
-    }
-
-    if (['y', 'yes'].includes(answer)) return true;
-    if (['n', 'no'].includes(answer)) return false;
-    console.log('Please answer y or n.');
-  }
-}
-
 function envValue(value, key) {
   if (key === 'AWS_BEDROCK_CONFIG') {
     let config;
@@ -145,31 +116,6 @@ function envValue(value, key) {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '')}"`;
 }
 
-async function verifySupabaseCredentials(projectUrl, publishableKey) {
-  let url;
-
-  try {
-    url = new URL(projectUrl);
-  } catch {
-    throw new Error('The Supabase project URL is not a valid URL.');
-  }
-
-  if (url.protocol !== 'https:' || !url.hostname.endsWith('.supabase.co')) {
-    throw new Error('Use the HTTPS project URL from your Supabase project settings.');
-  }
-
-  const response = await fetch(new URL('/auth/v1/health', url), {
-    headers: { apikey: publishableKey },
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Supabase verification failed (${response.status}). Check the URL and publishable key.`);
-  }
-
-  return url.origin;
-}
-
 async function main() {
   if (!input.isTTY) {
     throw new Error('The setup wizard requires an interactive terminal.');
@@ -183,20 +129,6 @@ async function main() {
 
   if (selected.key) {
     entries.push([selected.key, await askSecret(`Enter ${selected.name} API key: `)]);
-  }
-
-  if (await askYesNo('Configure Supabase?')) {
-    const projectUrl = await askRequired('Enter the Supabase project URL: ');
-    const publishableKey = await askRequired('Enter the Supabase publishable/anon key: ');
-
-    console.log('Verifying the Supabase project URL and publishable key...');
-    const verifiedUrl = await verifySupabaseCredentials(projectUrl, publishableKey);
-
-    entries.push(
-      ['VITE_SUPABASE_URL', verifiedUrl],
-      ['VITE_SUPABASE_ANON_KEY', publishableKey],
-      ['VITE_SUPABASE_VERIFICATION_STATUS', 'verified'],
-    );
   }
 
   const envPath = join(process.cwd(), '.env.local');
@@ -237,7 +169,7 @@ async function main() {
     .trimEnd()}\n`;
   await writeFile(envPath, content, { encoding: 'utf8', mode: 0o600 });
   await chmod(envPath, 0o600);
-  console.log('\nSetup complete. Restart the development server to load the new settings.');
+  console.log('\nSetup complete. Restart the development server to load the new settings. Connect Supabase in the app settings.');
 }
 
 main()

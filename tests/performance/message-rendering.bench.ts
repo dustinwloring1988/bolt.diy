@@ -25,12 +25,18 @@ function createMessages(count: number): Message[] {
   return Array.from({ length: count }, (_, index) => createMessage(index, index % 2 === 0 ? 'user' : 'assistant'));
 }
 
-function renderMessages(messages: Message[]) {
+function renderMessages(messages: Message[], container: HTMLElement) {
+  const fragment = document.createDocumentFragment();
+
   messages.forEach((message) => {
     const element = document.createElement('div');
     element.textContent = message.content;
     element.setAttribute('data-message-id', message.id);
+    fragment.append(element);
   });
+
+  container.replaceChildren(fragment);
+  container.getBoundingClientRect();
 }
 
 function medianDuration(operation: () => void, iterations = 20, samples = 25): number {
@@ -55,8 +61,18 @@ describe('Message Rendering Performance', () => {
   it('reports median render timings without assuming a single sample ordering', () => {
     const messages10 = createMessages(10);
     const messages50 = createMessages(50);
-    const time10 = medianDuration(() => renderMessages(messages10));
-    const time50 = medianDuration(() => renderMessages(messages50));
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    let time10: number;
+    let time50: number;
+
+    try {
+      time10 = medianDuration(() => renderMessages(messages10, container));
+      time50 = medianDuration(() => renderMessages(messages50, container));
+    } finally {
+      container.remove();
+    }
 
     console.log(`Median render (10 messages): ${time10.toFixed(4)}ms`);
     console.log(`Median render (50 messages): ${time50.toFixed(4)}ms`);

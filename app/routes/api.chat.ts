@@ -426,6 +426,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         const allTools = { ...mcpTools, ...webTools };
         const hasTools = Object.keys(allTools).length > 0;
 
+        const stepLimit = Math.max(maxLLMSteps ?? 1, hasTools && webSearchEnabled ? 2 : 1);
+
         const options: Omit<StreamingOptions, 'messages'> = {
           supabaseConnection: supabase,
 
@@ -440,7 +442,6 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             ? {
                 toolChoice: 'auto' as const,
                 tools: allTools,
-                stopWhen: isStepCount(Math.max(maxLLMSteps ?? 1, webSearchEnabled ? 2 : 1)),
               }
             : {}),
 
@@ -448,7 +449,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
            * isStepCount(undefined) can never be true, and supplying it replaces
            * v7's own default of isStepCount(1), so the step cap would be dead.
            */
-          stopWhen: isStepCount(maxLLMSteps ?? 1),
+          stopWhen: isStepCount(stepLimit),
           timeout: { chunkMs: 45_000 },
 
           // @ts-ignore - abortSignal not in type definition but supported at runtime

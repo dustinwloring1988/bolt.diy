@@ -30,7 +30,9 @@ export default function PostHogTab() {
     configuredServer &&
     configuredServer.type !== 'stdio' &&
     'headers' in configuredServer &&
-    configuredServer.headers?.Authorization,
+    Object.entries(configuredServer.headers ?? {}).some(
+      ([name, value]) => name.toLowerCase() === 'authorization' && Boolean(value),
+    ),
   );
 
   const availableTools = server?.status === 'available' ? Object.keys(server.tools).length : 0;

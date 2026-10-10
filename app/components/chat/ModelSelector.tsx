@@ -25,7 +25,7 @@ interface ModelSelectorProps {
   modelList: ModelInfo[];
   providerList: ProviderInfo[];
   apiKeys: Record<string, string>;
-  modelLoading?: string;
+  modelLoading?: 'all' | string[];
   onApiKeyChange?: (providerName: string, apiKey: string) => void;
 }
 
@@ -110,8 +110,22 @@ export const ModelSelector = ({
   }, [providerList, modelList]);
 
   useEffect(() => {
+    if (providerList.length > 0 && (!provider || !providerList.some((candidate) => candidate.name === provider.name))) {
+      const fallback = providerList[0];
+      setSelectedProvider(fallback);
+      setProvider?.(fallback);
+
+      const firstModel = modelList.find((candidate) => candidate.provider === fallback.name);
+
+      if (firstModel) {
+        setModel?.(firstModel.name);
+      }
+
+      return;
+    }
+
     setSelectedProvider(provider);
-  }, [provider]);
+  }, [provider, providerList, modelList, setProvider, setModel]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -174,6 +188,10 @@ export const ModelSelector = ({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!isOpen) {
+      return;
+    }
+
+    if (e.target instanceof HTMLElement && e.target.closest('button')) {
       return;
     }
 
@@ -500,7 +518,10 @@ export const ModelSelector = ({
 
               {/* Models List */}
               <div className="flex-1 overflow-y-auto p-2.5 space-y-1">
-                {modelLoading === 'all' || modelLoading === selectedProvider?.name ? (
+                {modelLoading === 'all' ||
+                (Array.isArray(modelLoading)
+                  ? modelLoading.includes(selectedProvider?.name ?? '')
+                  : modelLoading === selectedProvider?.name) ? (
                   <div className="flex items-center justify-center h-full text-bolt-elements-textTertiary">
                     <div className="flex items-center gap-2">
                       <span className="i-ph:spinner animate-spin" />

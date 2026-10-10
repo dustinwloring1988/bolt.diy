@@ -214,7 +214,9 @@ export default function SupabaseTab() {
         await fetchSupabaseStats(connection.token);
       }
     };
-    fetchProjects();
+    void fetchProjects().catch((error) => {
+      console.error('Failed to load Supabase projects:', error);
+    });
   }, [connection.user, connection.token]);
 
   const handleConnect = async () => {
@@ -794,7 +796,9 @@ export default function SupabaseTab() {
                       <h4 className="text-sm font-medium text-bolt-elements-textPrimary">{connection.user.email}</h4>
                       <p className="text-sm text-bolt-elements-textSecondary">
                         {connection.user.role} • Member since{' '}
-                        {new Date(connection.user.created_at).toLocaleDateString()}
+                        {connection.user.created_at
+                          ? new Date(connection.user.created_at).toLocaleDateString()
+                          : 'unknown'}
                       </p>
                       <div className="flex items-center gap-4 mt-2 text-xs text-bolt-elements-textSecondary">
                         <span className="flex items-center gap-1">

@@ -83,6 +83,7 @@ if (savedCredentials && !initialState.credentials) {
 export const supabaseConnection = atom<SupabaseConnectionState>(initialState);
 
 let connectionRevision = 0;
+let apiKeyRequestRevision = 0;
 
 export const isConnecting = atom(false);
 export const isFetchingStats = atom(false);
@@ -103,6 +104,7 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
 
   if (accountChanged || tokenChanged || connectionStatusChanged) {
     connectionRevision++;
+    apiKeyRequestRevision++;
   }
 
   if (connection.user !== undefined || connection.token !== undefined) {
@@ -112,6 +114,10 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
   }
 
   if (connection.selectedProjectId !== undefined) {
+    if (connection.selectedProjectId !== currentState.selectedProjectId) {
+      connection.credentials = undefined;
+    }
+
     if (connection.selectedProjectId && currentState.stats?.projects) {
       const selectedProject = currentState.stats.projects.find(
         (project) => project.id === connection.selectedProjectId,
@@ -290,6 +296,7 @@ export async function fetchSupabaseStats(token: string, expectedRevision?: numbe
 }
 
 export async function fetchProjectApiKeys(projectId: string, token: string) {
+  const requestRevision = ++apiKeyRequestRevision;
   isFetchingApiKeys.set(true);
 
   try {
@@ -313,6 +320,10 @@ export async function fetchProjectApiKeys(projectId: string, token: string) {
 
     const anonKey = apiKeys.find((key: SupabaseApiKey) => key.name === 'anon' || key.name === 'public');
 
+    if (requestRevision !== apiKeyRequestRevision) {
+      return null;
+    }
+
     if (anonKey) {
       const supabaseUrl = `https://${projectId}.supabase.co`;
 
@@ -331,6 +342,8 @@ export async function fetchProjectApiKeys(projectId: string, token: string) {
     console.error('Failed to fetch project API keys:', error);
     throw error;
   } finally {
-    isFetchingApiKeys.set(false);
+    if (requestRevision === apiKeyRequestRevision) {
+      isFetchingApiKeys.set(false);
+    }
   }
 }

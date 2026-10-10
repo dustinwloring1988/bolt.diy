@@ -46,8 +46,18 @@ async function supabaseUserLoader({ request }: { request: Request }) {
             id: projects[0].organization_id,
             name: 'Supabase User', // Supabase doesn't provide user name in this endpoint
             email: 'user@supabase.co', // Placeholder
+            role: 'Admin',
+            created_at: '',
+            last_sign_in_at: '',
           }
-        : { id: 'supabase-account', name: 'Supabase User', email: '' };
+        : {
+            id: 'supabase-account',
+            name: 'Supabase User',
+            email: '',
+            role: 'Admin',
+            created_at: '',
+            last_sign_in_at: '',
+          };
 
     return Response.json({
       user,
@@ -122,8 +132,18 @@ async function supabaseUserAction({ request }: { request: Request }) {
               id: projects[0].organization_id,
               name: 'Supabase User',
               email: 'user@supabase.co',
+              role: 'Admin',
+              created_at: '',
+              last_sign_in_at: '',
             }
-          : { id: 'supabase-account', name: 'Supabase User', email: '' };
+          : {
+              id: 'supabase-account',
+              name: 'Supabase User',
+              email: '',
+              role: 'Admin',
+              created_at: '',
+              last_sign_in_at: '',
+            };
 
       return Response.json({
         user,

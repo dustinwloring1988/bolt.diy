@@ -19,16 +19,52 @@ let browser;
 
 async function isServerReady() {
   try {
-    const response = await fetch(baseUrl, { signal: AbortSignal.timeout(1_000) });
-    return response.ok;
+    await fetch(baseUrl, { signal: AbortSignal.timeout(1_000) });
+    return true;
   } catch {
     return false;
   }
 }
 
+let stoppingServer;
+
+function stopServer() {
+  if (!server || server.exitCode !== null) {
+    return Promise.resolve();
+  }
+
+  if (stoppingServer) {
+    return stoppingServer;
+  }
+
+  stoppingServer = new Promise((resolveStop) => {
+    if (process.platform === 'win32') {
+      const killer = spawn('taskkill', ['/pid', String(server.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      killer.once('close', resolveStop);
+      killer.once('error', resolveStop);
+      return;
+    }
+
+    try {
+      process.kill(-server.pid, 'SIGTERM');
+    } catch {
+      server.kill('SIGTERM');
+    }
+
+    server.once('close', resolveStop);
+    const timeout = setTimeout(resolveStop, 3_000);
+    timeout.unref();
+  });
+
+  return stoppingServer;
+}
+
 async function startDevServer() {
   if (await isServerReady()) {
-    return false;
+    throw new Error(`A server is already responding at ${baseUrl}. Stop it or choose another PROFILE_PORT.`);
   }
 
   const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
@@ -36,6 +72,7 @@ async function startDevServer() {
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
     windowsHide: true,
+    detached: process.platform !== 'win32',
   });
 
   let serverOutput = '';
@@ -48,7 +85,7 @@ async function startDevServer() {
 
   for (let attempt = 0; attempt < 90; attempt += 1) {
     if (await isServerReady()) {
-      return true;
+      return;
     }
 
     if (server.exitCode !== null) {
@@ -77,13 +114,14 @@ async function readTrace(session, stream) {
 
 try {
   await mkdir(dirname(tracePath), { recursive: true });
-  const startedServer = await startDevServer();
+  await startDevServer();
   browser = await chromium.launch({ headless: true });
 
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
   const pageErrors = [];
   await page.addInitScript(() => {
+    localStorage.setItem('bolt_onboarding_complete', 'true');
     window.__BROWSER_LONG_TASKS__ = [];
 
     if (typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
@@ -193,9 +231,6 @@ try {
   await browser.close();
   browser = undefined;
 
-  if (startedServer && server) {
-    server.kill();
-  }
 } catch (error) {
   console.error(error instanceof Error ? error.stack || error.message : error);
   process.exitCode = 1;
@@ -204,7 +239,5 @@ try {
     await browser.close().catch(() => undefined);
   }
 
-  if (server && server.exitCode === null) {
-    server.kill();
-  }
+  await stopServer();
 }

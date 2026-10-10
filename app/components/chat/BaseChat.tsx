@@ -138,7 +138,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [isListening, setIsListening] = useState(false);
     const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
     const [transcript, setTranscript] = useState('');
-    const [isModelLoading, setIsModelLoading] = useState<string | undefined>('all');
+    const [isModelLoading, setIsModelLoading] = useState<'all' | string[] | undefined>('all');
     const apiKeyFetchSequence = useRef(new Map<string, number>());
     const allProviderFetchSequence = useRef(0);
     const apiKeyFetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -273,7 +273,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       setApiKeys(newApiKeys);
       Cookies.set('apiKeys', JSON.stringify(newApiKeys));
 
-      setIsModelLoading(providerName);
+      setIsModelLoading((current) => (current === 'all' ? current : [...new Set([...(current ?? []), providerName])]));
 
       const pendingFetch = apiKeyFetchTimers.current.get(providerName);
 
@@ -284,12 +284,23 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       apiKeyFetchTimers.current.set(
         providerName,
         setTimeout(async () => {
-          let providerModels: ModelInfo[] = [];
+          let providerModels: ModelInfo[] | undefined;
 
           try {
             const response = await fetch(`/api/models/${encodeURIComponent(providerName)}`);
+
+            if (!response.ok) {
+              throw new Error(`Model request failed (${response.status})`);
+            }
+
             const data = await response.json();
-            providerModels = (data as { modelList: ModelInfo[] }).modelList;
+            const modelList = (data as { modelList?: ModelInfo[] }).modelList;
+
+            if (Array.isArray(modelList)) {
+              providerModels = modelList;
+            } else {
+              throw new Error('Model response did not include a model list');
+            }
           } catch (error) {
             console.error('Error loading dynamic models for:', providerName, error);
           }
@@ -298,11 +309,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             return;
           }
 
-          setModelList((prevModels) => {
-            const otherModels = prevModels.filter((model) => model.provider !== providerName);
-            return [...otherModels, ...providerModels];
-          });
-          setIsModelLoading(undefined);
+          if (providerModels) {
+            setModelList((prevModels) => {
+              const otherModels = prevModels.filter((model) => model.provider !== providerName);
+              return [...otherModels, ...providerModels];
+            });
+          }
+
+          setIsModelLoading((current) =>
+            current === 'all' ? current : (current ?? []).filter((name) => name !== providerName),
+          );
           apiKeyFetchTimers.current.delete(providerName);
         }, 500),
       );

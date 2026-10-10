@@ -26,7 +26,7 @@ interface ChatBoxProps {
   providerList: any[];
   modelList: any[];
   apiKeys: Record<string, string>;
-  isModelLoading: string | undefined;
+  isModelLoading: 'all' | string[] | undefined;
   onApiKeysChange: (providerName: string, apiKey: string) => void;
   uploadedFiles: File[];
   imageDataList: string[];

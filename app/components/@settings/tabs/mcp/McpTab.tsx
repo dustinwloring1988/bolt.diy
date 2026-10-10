@@ -153,7 +153,7 @@ export default function McpTab() {
         },
       };
       setMCPConfigText(JSON.stringify(newConfig, null, 2));
-      toast.success(`Added ${server.name} to configuration`);
+      toast.success(`${server.name} added to the unsaved configuration. Save to apply it.`);
       setError(null);
     } catch {
       toast.error(`Failed to add ${server.name}`);

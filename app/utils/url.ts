@@ -18,6 +18,8 @@ export function isPublicIpAddress(address: string): boolean {
     return (
       firstSegment >= 0x2000 &&
       firstSegment <= 0x3fff &&
+      !normalized.startsWith('2001:20:') &&
+      !normalized.startsWith('2001:0020:') &&
       !normalized.startsWith('2001:db8:') &&
       !normalized.startsWith('2001:0:') &&
       !normalized.startsWith('2002:') &&

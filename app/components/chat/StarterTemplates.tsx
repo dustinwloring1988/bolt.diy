@@ -62,7 +62,7 @@ const StarterTemplates: React.FC<StarterTemplatesProps> = ({ importChat }) => {
 
       const fileContents = filePaths
         .map((filePath) => {
-          const { data: content, encoding } = data[filePath];
+          const { data: content } = data[filePath];
 
           let textContent = '';
 
@@ -81,7 +81,7 @@ const StarterTemplates: React.FC<StarterTemplatesProps> = ({ importChat }) => {
 
           return {
             path: filePath,
-            content: encoding === 'utf8' ? content : textContent,
+            content: textContent,
           };
         })
         .filter((f) => f.content);
