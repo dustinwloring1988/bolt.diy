@@ -26,7 +26,18 @@ interface JourneyMarks {
 class PerformanceMonitor {
   private _metrics: PerformanceMetric[] = [];
   private _journeyMarks: Map<string, JourneyMarks> = new Map();
-  private _enabled = typeof window !== 'undefined';
+  private _enabled =
+    typeof window !== 'undefined' &&
+    (import.meta.env.DEV || new URLSearchParams(window.location.search).get('profile') === '1');
+  private readonly _maxMetrics = 1_000;
+
+  isEnabled() {
+    return this._enabled;
+  }
+
+  setEnabled(enabled: boolean) {
+    this._enabled = enabled;
+  }
 
   /**
    * Mark the start of a user journey
@@ -60,7 +71,7 @@ class PerformanceMonitor {
 
     const marks = this._journeyMarks.get(journey);
 
-    if (!marks || !marks.start) {
+    if (!marks || marks.start === undefined) {
       console.warn(`[PERF] No start mark found for journey: ${journey}`);
       return null;
     }
@@ -71,7 +82,13 @@ class PerformanceMonitor {
     try {
       performance.measure(measureName, startMarkName, endMarkName);
 
-      const measure = performance.getEntriesByName(measureName)[0] as PerformanceMeasure;
+      const measures = performance.getEntriesByName(measureName);
+      const measure = measures[measures.length - 1] as PerformanceMeasure | undefined;
+
+      if (!measure) {
+        return null;
+      }
+
       const duration = measure.duration;
 
       // Record the metric
@@ -79,6 +96,9 @@ class PerformanceMonitor {
 
       // Clean up marks for this journey
       this._journeyMarks.delete(journey);
+      performance.clearMarks(startMarkName);
+      performance.clearMarks(endMarkName);
+      performance.clearMeasures(measureName);
 
       return duration;
     } catch (_error) {
@@ -104,6 +124,10 @@ class PerformanceMonitor {
 
     this._metrics.push(metric);
 
+    if (this._metrics.length > this._maxMetrics) {
+      this._metrics.splice(0, this._metrics.length - this._maxMetrics);
+    }
+
     // Log to console in development
     if (import.meta.env.DEV) {
       console.log(`[PERF] ${name}: ${duration.toFixed(2)}ms`, metadata || '');
@@ -120,6 +144,38 @@ class PerformanceMonitor {
    */
   getMetrics(): PerformanceMetric[] {
     return [...this._metrics];
+  }
+
+  getJourneyNames(): string[] {
+    return [...new Set(this._metrics.map((metric) => metric.name))];
+  }
+
+  getJourneyStats(journey: string) {
+    const durations = this._metrics
+      .filter((metric) => metric.name === journey)
+      .map((metric) => metric.duration)
+      .sort((a, b) => a - b);
+
+    if (durations.length === 0) {
+      return null;
+    }
+
+    const percentile = (p: number) => durations[Math.max(0, Math.ceil((durations.length * p) / 100) - 1)];
+
+    return {
+      count: durations.length,
+      min: durations[0],
+      max: durations[durations.length - 1],
+      avg: durations.reduce((sum, duration) => sum + duration, 0) / durations.length,
+      p50: percentile(50),
+      p75: percentile(75),
+      p95: percentile(95),
+      p99: percentile(99),
+    };
+  }
+
+  exportEvents(): string {
+    return JSON.stringify(this._metrics, null, 2);
   }
 
   /**
@@ -175,6 +231,10 @@ class PerformanceMonitor {
     performance.clearMeasures();
   }
 
+  clearEvents() {
+    this.clear();
+  }
+
   /**
    * Generate a performance report
    */
@@ -182,7 +242,7 @@ class PerformanceMonitor {
     const journeys = new Map<string, number[]>();
 
     this._metrics.forEach((metric) => {
-      const journey = metric.name.split(':')[0];
+      const journey = metric.name;
 
       if (!journeys.has(journey)) {
         journeys.set(journey, []);
@@ -274,54 +334,39 @@ export const journeys = {
   },
 };
 
+let webVitalsObserversStarted = false;
+
 // Web Vitals integration
 export function observeWebVitals() {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || !performanceMonitor.isEnabled() || webVitalsObserversStarted) {
     return;
   }
 
-  // Cumulative Layout Shift
-  let clsValue = 0;
+  webVitalsObserversStarted = true;
 
-  const clsObserver = new PerformanceObserver((list) => {
-    for (const entry of list.getEntries()) {
-      if (!(entry as any).hadRecentInput) {
-        clsValue += (entry as any).value;
-        performanceMonitor.recordMetric('web-vitals:cls', clsValue);
+  void import('web-vitals')
+    .then(({ onCLS, onFCP, onINP, onLCP, onTTFB }) => {
+      onCLS((metric) => performanceMonitor.recordMetric('web-vitals:cls', metric.value, { rating: metric.rating }));
+      onFCP((metric) => performanceMonitor.recordMetric('web-vitals:fcp', metric.value, { rating: metric.rating }));
+      onINP((metric) => performanceMonitor.recordMetric('web-vitals:inp', metric.value, { rating: metric.rating }));
+      onLCP((metric) => performanceMonitor.recordMetric('web-vitals:lcp', metric.value, { rating: metric.rating }));
+      onTTFB((metric) => performanceMonitor.recordMetric('web-vitals:ttfb', metric.value, { rating: metric.rating }));
+    })
+    .catch((error) => console.warn('Failed to load web-vitals:', error));
+
+  if (typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        performanceMonitor.recordMetric('main-thread:long-task', entry.duration, {
+          startTime: entry.startTime,
+          attribution: (entry as PerformanceEntry & { attribution?: Array<{ name?: string }> }).attribution?.map(
+            (item) => item.name,
+          ),
+        });
       }
-    }
-  });
+    });
 
-  try {
-    clsObserver.observe({ type: 'layout-shift', buffered: true });
-  } catch {
-    // Layout shift not supported
-  }
-
-  // Largest Contentful Paint
-  const lcpObserver = new PerformanceObserver((list) => {
-    const entries = list.getEntries();
-    const lastEntry = entries[entries.length - 1];
-    performanceMonitor.recordMetric('web-vitals:lcp', lastEntry.startTime);
-  });
-
-  try {
-    lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
-  } catch {
-    // LCP not supported
-  }
-
-  // First Input Delay
-  const fidObserver = new PerformanceObserver((list) => {
-    for (const entry of list.getEntries()) {
-      performanceMonitor.recordMetric('web-vitals:fid', (entry as any).processingStart - entry.startTime);
-    }
-  });
-
-  try {
-    fidObserver.observe({ type: 'first-input', buffered: true });
-  } catch {
-    // FID not supported
+    observer.observe({ type: 'longtask', buffered: true });
   }
 }
 
@@ -332,4 +377,12 @@ if (typeof window !== 'undefined') {
     journeys,
     report: () => console.log(performanceMonitor.generateReport()),
   };
+
+  /*
+   * In development, profiling is on by default. In production, enable it with
+   * `?profile=1` or the dashboard shortcut to avoid collecting routine data.
+   */
+  if (new URLSearchParams(window.location.search).get('profile') === '1') {
+    performanceMonitor.setEnabled(true);
+  }
 }

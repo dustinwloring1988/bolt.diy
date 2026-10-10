@@ -5,8 +5,8 @@
  */
 
 import { useEffect, useState } from 'react';
+import { performanceMonitor } from '~/lib/performance/metrics';
 import { FrameRateMonitor } from '~/utils/frame-rate-monitor';
-import { PerformanceMonitor } from '~/utils/performance-monitor';
 
 interface JourneyStats {
   name: string;
@@ -47,11 +47,11 @@ export function PerformanceDashboard({ onClose }: { onClose?: () => void }) {
   }, [isMonitoringFps]);
 
   const loadJourneyStats = () => {
-    const journeyNames = PerformanceMonitor.getJourneyNames();
+    const journeyNames = performanceMonitor.getJourneyNames();
 
     const stats = journeyNames
       .map((name) => {
-        const stat = PerformanceMonitor.getJourneyStats(name);
+        const stat = performanceMonitor.getJourneyStats(name);
         return stat ? { name, ...stat } : null;
       })
       .filter((s): s is JourneyStats => s !== null)
@@ -61,7 +61,7 @@ export function PerformanceDashboard({ onClose }: { onClose?: () => void }) {
   };
 
   const handleExport = () => {
-    const data = PerformanceMonitor.exportEvents();
+    const data = performanceMonitor.exportEvents();
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -73,7 +73,7 @@ export function PerformanceDashboard({ onClose }: { onClose?: () => void }) {
 
   const handleClear = () => {
     if (confirm('Clear all performance data?')) {
-      PerformanceMonitor.clearEvents();
+      performanceMonitor.clearEvents();
       loadJourneyStats();
     }
   };
@@ -93,18 +93,17 @@ export function PerformanceDashboard({ onClose }: { onClose?: () => void }) {
   const getPerformanceRating = (duration: number, journey: string): 'good' | 'needs-improvement' | 'poor' => {
     // Define performance budgets for different journey types
     const budgets: Record<string, number> = {
-      'page-load': 3000,
-      'chat-init': 500,
-      'message-send': 300,
-      'file-load': 1000,
-      'code-highlight': 100,
-      'web-vital-fcp': 1800,
-      'web-vital-lcp': 2500,
-      'web-vital-fid': 100,
-      'web-vital-cls': 0.1,
+      'app-launch:interactive': 1000,
+      'web-vitals:fcp': 1800,
+      'web-vitals:lcp': 2500,
+      'web-vitals:inp': 200,
+      'web-vitals:ttfb': 800,
+      'web-vitals:cls': 0.1,
+      'main-thread:long-task': 50,
+      'react-render:route-outlet': 16.67,
     };
 
-    const budget = budgets[journey] || 1000;
+    const budget = budgets[journey] || (journey.startsWith('react-render:') ? 16.67 : 1000);
 
     if (duration <= budget * 0.75) {
       return 'good';
@@ -116,6 +115,9 @@ export function PerformanceDashboard({ onClose }: { onClose?: () => void }) {
 
     return 'poor';
   };
+
+  const formatMetric = (name: string, duration: number) =>
+    name === 'web-vitals:cls' ? duration.toFixed(3) : formatDuration(duration);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
@@ -216,43 +218,43 @@ export function PerformanceDashboard({ onClose }: { onClose?: () => void }) {
                       <div>
                         <div className="text-xs text-bolt-elements-textSecondary">Min</div>
                         <div className="text-sm font-mono text-bolt-elements-textPrimary">
-                          {formatDuration(journey.min)}
+                          {formatMetric(journey.name, journey.min)}
                         </div>
                       </div>
                       <div>
                         <div className="text-xs text-bolt-elements-textSecondary">Avg</div>
                         <div className="text-sm font-mono text-bolt-elements-textPrimary">
-                          {formatDuration(journey.avg)}
+                          {formatMetric(journey.name, journey.avg)}
                         </div>
                       </div>
                       <div>
                         <div className="text-xs text-bolt-elements-textSecondary">P50</div>
                         <div className="text-sm font-mono text-bolt-elements-textPrimary">
-                          {formatDuration(journey.p50)}
+                          {formatMetric(journey.name, journey.p50)}
                         </div>
                       </div>
                       <div>
                         <div className="text-xs text-bolt-elements-textSecondary">P75</div>
                         <div className={`text-sm font-mono font-bold ${ratingColor}`}>
-                          {formatDuration(journey.p75)}
+                          {formatMetric(journey.name, journey.p75)}
                         </div>
                       </div>
                       <div>
                         <div className="text-xs text-bolt-elements-textSecondary">P95</div>
                         <div className="text-sm font-mono text-bolt-elements-textPrimary">
-                          {formatDuration(journey.p95)}
+                          {formatMetric(journey.name, journey.p95)}
                         </div>
                       </div>
                       <div>
                         <div className="text-xs text-bolt-elements-textSecondary">P99</div>
                         <div className="text-sm font-mono text-bolt-elements-textPrimary">
-                          {formatDuration(journey.p99)}
+                          {formatMetric(journey.name, journey.p99)}
                         </div>
                       </div>
                       <div>
                         <div className="text-xs text-bolt-elements-textSecondary">Max</div>
                         <div className="text-sm font-mono text-bolt-elements-textPrimary">
-                          {formatDuration(journey.max)}
+                          {formatMetric(journey.name, journey.max)}
                         </div>
                       </div>
                     </div>

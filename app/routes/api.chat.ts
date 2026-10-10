@@ -57,6 +57,14 @@ function toClientErrorMessage(error: unknown): string {
 }
 
 function matchErrorHint(errorMessage: string): string | undefined {
+  if (
+    /tool|function/.test(errorMessage.toLowerCase()) &&
+    /schema|parameter|argument/.test(errorMessage.toLowerCase()) &&
+    /invalid|unsupported|required|strict|additionalproperties|validation/.test(errorMessage.toLowerCase())
+  ) {
+    return 'Custom error: The selected provider rejected a tool schema. Check whether this model supports tool calling and whether its strict-schema requirements match the enabled MCP or web tools.';
+  }
+
   if (errorMessage.includes('model') && errorMessage.includes('not found')) {
     return 'Custom error: Invalid model selected. Please check that the model name is correct and available.';
   }

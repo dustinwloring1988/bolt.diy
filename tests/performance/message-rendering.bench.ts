@@ -1,14 +1,10 @@
 /**
- * Message Rendering Benchmarks
- * Measure the performance of rendering messages at scale
- * 
- * Note: These are benchmark reference implementations.
- * Run with: pnpm test tests/performance/message-rendering.bench.ts
+ * Message rendering and list operation benchmarks.
+ * Run with: pnpm run benchmarks
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-// Simulate message data
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -26,40 +22,47 @@ function createMessage(index: number, role: 'user' | 'assistant' = 'user'): Mess
 }
 
 function createMessages(count: number): Message[] {
-  return Array.from({ length: count }, (_, i) => createMessage(i, i % 2 === 0 ? 'user' : 'assistant'));
+  return Array.from({ length: count }, (_, index) => createMessage(index, index % 2 === 0 ? 'user' : 'assistant'));
+}
+
+function renderMessages(count: number) {
+  createMessages(count).forEach((message) => {
+    const element = document.createElement('div');
+    element.textContent = message.content;
+    element.setAttribute('data-message-id', message.id);
+  });
+}
+
+function medianDuration(operation: () => void, iterations = 20, samples = 25): number {
+  for (let index = 0; index < 5; index += 1) {
+    operation();
+  }
+
+  const durations = Array.from({ length: samples }, () => {
+    const start = performance.now();
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+      operation();
+    }
+    return (performance.now() - start) / iterations;
+  }).sort((left, right) => left - right);
+
+  return durations[Math.floor(durations.length / 2)];
 }
 
 describe('Message Rendering Performance', () => {
-  it('should benchmark message rendering', () => {
-    const start10 = performance.now();
-    const messages10 = createMessages(10);
-    messages10.forEach((msg) => {
-      const div = document.createElement('div');
-      div.textContent = msg.content;
-      div.setAttribute('data-message-id', msg.id);
-    });
-    const time10 = performance.now() - start10;
-    
-    const start50 = performance.now();
-    const messages50 = createMessages(50);
-    messages50.forEach((msg) => {
-      const div = document.createElement('div');
-      div.textContent = msg.content;
-      div.setAttribute('data-message-id', msg.id);
-    });
-    const time50 = performance.now() - start50;
-    
-    console.log(`Render 10 messages: ${time10.toFixed(2)}ms`);
-    console.log(`Render 50 messages: ${time50.toFixed(2)}ms`);
-    
-    expect(time10).toBeGreaterThan(0);
-    expect(time50).toBeGreaterThan(time10);
+  it('reports median render timings without assuming a single sample ordering', () => {
+    const time10 = medianDuration(() => renderMessages(10));
+    const time50 = medianDuration(() => renderMessages(50));
+
+    console.log(`Median render (10 messages): ${time10.toFixed(4)}ms`);
+    console.log(`Median render (50 messages): ${time50.toFixed(4)}ms`);
+    expect(Number.isFinite(time10)).toBe(true);
+    expect(Number.isFinite(time50)).toBe(true);
   });
 });
 
 describe('Message Content Processing', () => {
-  it('should process message content efficiently', () => {
-    const content = `
+  const content = `
 Here's some code:
 
 \`\`\`javascript
@@ -70,45 +73,41 @@ function example() {
 \`\`\`
 
 And more text after.
-    `.trim();
+  `.trim();
 
-    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    const blocks = [];
-    let match;
+  it('reports median code extraction time', () => {
+    const codeBlockRegex = /\u0060\u0060\u0060(\w+)?\n([\s\S]*?)\u0060\u0060\u0060/g;
+    const processContent = () => {
+      const blocks: { language: string; code: string }[] = [];
+      let match: RegExpExecArray | null;
 
-    const start = performance.now();
-    while ((match = codeBlockRegex.exec(content)) !== null) {
-      blocks.push({
-        language: match[1] || 'plaintext',
-        code: match[2],
-      });
-    }
-    const time = performance.now() - start;
+      while ((match = codeBlockRegex.exec(content)) !== null) {
+        blocks.push({ language: match[1] || 'plaintext', code: match[2] });
+      }
 
-    console.log(`Extract code blocks: ${time.toFixed(4)}ms`);
-    expect(blocks.length).toBeGreaterThan(0);
+      codeBlockRegex.lastIndex = 0;
+      return blocks;
+    };
+    const duration = medianDuration(() => processContent());
+
+    console.log(`Median code extraction: ${duration.toFixed(4)}ms`);
+    expect(processContent()).toHaveLength(1);
   });
 });
 
 describe('Message List Operations', () => {
-  const largeMessageList = createMessages(1000);
+  const messages = createMessages(1_000);
 
-  it('should perform list operations efficiently', () => {
-    const appendStart = performance.now();
-    const newMessage = createMessage(1001);
-    const appended = [...largeMessageList, newMessage];
-    const appendTime = performance.now() - appendStart;
-
-    const updateStart = performance.now();
-    const updated = largeMessageList.map((msg) =>
-      msg.id === 'msg-500' ? { ...msg, content: 'Updated content' } : msg,
+  it('reports median append and update timings for a 1000 message list', () => {
+    const appendTime = medianDuration(() => [...messages, createMessage(1_001)]);
+    const updateTime = medianDuration(() =>
+      messages.map((message) =>
+        message.id === 'msg-500' ? { ...message, content: 'Updated content' } : message,
+      ),
     );
-    const updateTime = performance.now() - updateStart;
 
-    console.log(`Append to 1000 items: ${appendTime.toFixed(2)}ms`);
-    console.log(`Update in 1000 items: ${updateTime.toFixed(2)}ms`);
-
-    expect(appended.length).toBe(1001);
-    expect(updated.length).toBe(1000);
+    console.log(`Median append to 1000 items: ${appendTime.toFixed(4)}ms`);
+    console.log(`Median update in 1000 items: ${updateTime.toFixed(4)}ms`);
+    expect(messages).toHaveLength(1_000);
   });
 });

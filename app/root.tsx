@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react';
 import tailwindReset from '@unocss/reset/tailwind-compat.css?url';
 import xtermStyles from '@xterm/xterm/css/xterm.css?url';
-import { useEffect } from 'react';
+import { lazy, Profiler, Suspense, useEffect, useState, type ProfilerOnRenderCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { Links, Meta, Outlet, Scripts, ScrollRestoration, type LinksFunction } from 'react-router';
@@ -27,19 +27,6 @@ export const links: LinksFunction = () => [
   { rel: 'stylesheet', href: tailwindReset },
   { rel: 'stylesheet', href: globalStyles },
   { rel: 'stylesheet', href: xtermStyles },
-  {
-    rel: 'preconnect',
-    href: 'https://fonts.googleapis.com',
-  },
-  {
-    rel: 'preconnect',
-    href: 'https://fonts.gstatic.com',
-    crossOrigin: 'anonymous',
-  },
-  {
-    rel: 'stylesheet',
-    href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-  },
   {
     rel: 'preconnect',
     href: 'https://unpkg.com',
@@ -122,19 +109,44 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-import { journeys, observeWebVitals } from './lib/performance/metrics';
+import { journeys, observeWebVitals, performanceMonitor } from './lib/performance/metrics';
 import { prebootWebContainer } from './lib/performance/webcontainer-optimizer';
 import { logStore } from './lib/stores/logs';
 import { themeStore } from './lib/stores/theme';
 import globalStyles from './styles/index.scss?url';
 import { stripIndents } from './utils/stripIndent';
 
+const PerformanceDashboard = lazy(() =>
+  import('./components/debug/PerformanceDashboard').then((module) => ({ default: module.PerformanceDashboard })),
+);
+
+if (typeof window !== 'undefined') {
+  journeys.appLaunch.start();
+}
+
+const recordReactRender: ProfilerOnRenderCallback = (
+  id,
+  phase,
+  actualDuration,
+  baseDuration,
+  startTime,
+  commitTime,
+) => {
+  if (actualDuration >= 2) {
+    performanceMonitor.recordMetric(`react-render:${id}`, actualDuration, {
+      phase,
+      baseDuration,
+      startTime,
+      commitTime,
+    });
+  }
+};
+
 export default function App() {
   const theme = useStore(themeStore);
+  const [showPerformanceDashboard, setShowPerformanceDashboard] = useState(false);
 
   useEffect(() => {
-    // Mark app launch start
-    journeys.appLaunch.start();
     journeys.appLaunch.reactHydrated();
 
     logStore.logSystem('Application initialized', {
@@ -171,10 +183,23 @@ export default function App() {
     // Mark app as interactive
     journeys.appLaunch.interactive({
       theme,
-      performance: {
-        navigation: performance.getEntriesByType('navigation')[0],
-      },
+      navigationType: (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type,
     });
+  }, []);
+
+  useEffect(() => {
+    const handleProfileShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
+        event.preventDefault();
+        performanceMonitor.setEnabled(true);
+        observeWebVitals();
+        setShowPerformanceDashboard((visible) => !visible);
+      }
+    };
+
+    window.addEventListener('keydown', handleProfileShortcut);
+
+    return () => window.removeEventListener('keydown', handleProfileShortcut);
   }, []);
 
   /*
@@ -184,5 +209,16 @@ export default function App() {
    * nesting and duplicate-element mounts. Remix v2 required the explicit wrap;
    * React Router 8 does not.
    */
-  return <Outlet />;
+  return (
+    <>
+      <Profiler id="route-outlet" onRender={recordReactRender}>
+        <Outlet />
+      </Profiler>
+      {showPerformanceDashboard && (
+        <Suspense fallback={null}>
+          <PerformanceDashboard onClose={() => setShowPerformanceDashboard(false)} />
+        </Suspense>
+      )}
+    </>
+  );
 }

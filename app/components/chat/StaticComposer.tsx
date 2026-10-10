@@ -44,7 +44,7 @@ export function generateStaticComposerHTML(placeholder: string = 'How can I help
           padding: 12px;
           border: 1px solid #d1d5db;
           border-radius: 8px;
-          font-family: Inter, sans-serif;
+          font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           font-size: 14px;
           resize: none;
           outline: none;
@@ -151,7 +151,7 @@ export function StaticComposer({
           padding: '12px',
           border: '1px solid #d1d5db',
           borderRadius: '8px',
-          fontFamily: 'Inter, sans-serif',
+          fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
           fontSize: '14px',
           resize: 'none',
           outline: 'none',
