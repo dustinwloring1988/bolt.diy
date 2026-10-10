@@ -518,7 +518,9 @@ export const ChatImpl = memo(
     const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
       const messageContent = messageInput || input;
 
-      if (!messageContent?.trim()) {
+      const hasAttachments = uploadedFiles.length > 0 || imageDataList.length > 0;
+
+      if (!messageContent?.trim() && !hasAttachments) {
         return;
       }
 
@@ -541,7 +543,7 @@ export const ChatImpl = memo(
       if (!chatStarted) {
         setFakeLoading(true);
 
-        if (autoSelectTemplate) {
+        if (autoSelectTemplate && finalMessageContent.trim()) {
           const { template, title } = await selectStarterTemplate({
             message: finalMessageContent,
             model,

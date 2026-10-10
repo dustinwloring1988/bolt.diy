@@ -75,9 +75,9 @@ interface BaseChatProps {
   importChat?: (description: string, messages: UIMessage[]) => Promise<void>;
   exportChat?: () => void;
   uploadedFiles?: File[];
-  setUploadedFiles?: (files: File[]) => void;
+  setUploadedFiles?: React.Dispatch<React.SetStateAction<File[]>>;
   imageDataList?: string[];
-  setImageDataList?: (dataList: string[]) => void;
+  setImageDataList?: React.Dispatch<React.SetStateAction<string[]>>;
   actionAlert?: ActionAlert;
   clearAlert?: () => void;
   deployAlert?: DeployAlert;

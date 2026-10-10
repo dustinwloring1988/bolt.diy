@@ -8,10 +8,11 @@
  * and launches the Electron application with hot-reload capabilities.
  */
 
-import { spawn, exec } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import electronPath from 'electron';
 
 // Get current file directory
 const __filename = fileURLToPath(import.meta.url);
@@ -59,24 +60,31 @@ process.on('SIGTERM', cleanup);
  * @returns {Promise<void>}
  */
 async function waitForServer(port, serverName) {
-  return new Promise((resolve, reject) => {
-    let retries = 0;
+  const endpoint = `http://127.0.0.1:${port}`;
 
-    const checkServer = () => {
-      exec(`lsof -i :${port}`, (error, stdout) => {
-        if (stdout) {
-          console.log(`✅ ${serverName} started`);
-          resolve();
-        } else if (retries >= MAX_RETRIES) {
-          reject(new Error(`Timeout waiting for ${serverName} to start`));
-        } else {
-          retries++;
-          setTimeout(checkServer, CHECK_INTERVAL);
-        }
-      });
-    };
+  for (let retry = 0; retry < MAX_RETRIES; retry++) {
+    try {
+      await fetch(endpoint, { signal: AbortSignal.timeout(CHECK_INTERVAL) });
+      console.log(`✅ ${serverName} started`);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, CHECK_INTERVAL));
+    }
+  }
 
-    checkServer();
+  throw new Error(`Timeout waiting for ${serverName} to start`);
+}
+
+function spawnPnpm(args, options) {
+  const pnpmCli = process.env.npm_execpath;
+
+  if (pnpmCli) {
+    return spawn(process.execPath, [pnpmCli, ...args], options);
+  }
+
+  return spawn(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', args, {
+    ...options,
+    shell: process.platform === 'win32',
   });
 }
 
@@ -86,7 +94,7 @@ async function waitForServer(port, serverName) {
  */
 async function buildElectronDeps() {
   return new Promise((resolve, reject) => {
-    const buildProcess = spawn('pnpm', ['electron:build:deps'], {
+    const buildProcess = spawnPnpm(['electron:build:deps'], {
       stdio: 'inherit',
       env: { ...process.env },
     });
@@ -118,7 +126,7 @@ async function startElectronDev() {
 
     // 2. Start Remix development server
     console.log('🌐 Starting Remix development server...');
-    remixProcess = spawn('pnpm', ['dev'], {
+    remixProcess = spawnPnpm(['dev'], {
       stdio: 'pipe',
       env: { ...process.env },
     });
@@ -138,7 +146,6 @@ async function startElectronDev() {
     // 3. Start Electron application
     console.log('⚡ Starting Electron application...');
 
-    const electronPath = path.join(__dirname, '..', 'node_modules', '.bin', 'electron');
     const mainPath = path.join(__dirname, '..', 'build', 'electron', 'main', 'index.mjs');
 
     // Check if main process file exists

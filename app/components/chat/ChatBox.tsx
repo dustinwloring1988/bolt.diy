@@ -48,8 +48,8 @@ interface ChatBoxProps {
   setProvider?: ((provider: ProviderInfo) => void) | undefined;
   model?: string | undefined;
   setModel?: ((model: string) => void) | undefined;
-  setUploadedFiles?: ((files: File[]) => void) | undefined;
-  setImageDataList?: ((dataList: string[]) => void) | undefined;
+  setUploadedFiles?: React.Dispatch<React.SetStateAction<File[]>> | undefined;
+  setImageDataList?: React.Dispatch<React.SetStateAction<string[]>> | undefined;
   handleInputChange?: ((event: React.ChangeEvent<HTMLTextAreaElement>) => void) | undefined;
   handleStop?: (() => void) | undefined;
   enhancingPrompt?: boolean | undefined;
@@ -164,19 +164,24 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             e.preventDefault();
             e.currentTarget.style.border = '1px solid var(--bolt-elements-borderColor)';
 
-            const files = Array.from(e.dataTransfer.files);
-            files.forEach((file) => {
-              if (file.type.startsWith('image/')) {
-                const reader = new FileReader();
+            const files = Array.from(e.dataTransfer.files).filter((file) => file.type.startsWith('image/'));
 
-                reader.onload = (e) => {
-                  const base64Image = e.target?.result as string;
-                  props.setUploadedFiles?.([...props.uploadedFiles, file]);
-                  props.setImageDataList?.([...props.imageDataList, base64Image]);
-                };
-                reader.readAsDataURL(file);
-              }
-            });
+            void Promise.all(
+              files.map(
+                (file) =>
+                  new Promise<{ file: File; data: string }>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve({ file, data: reader.result as string });
+                    reader.onerror = () => reject(reader.error ?? new Error(`Failed to read ${file.name}`));
+                    reader.readAsDataURL(file);
+                  }),
+              ),
+            )
+              .then((images) => {
+                props.setUploadedFiles?.((current) => [...current, ...images.map(({ file }) => file)]);
+                props.setImageDataList?.((current) => [...current, ...images.map(({ data }) => data)]);
+              })
+              .catch((error: unknown) => console.error('Failed to read dropped image:', error));
           }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
@@ -214,7 +219,12 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
         <ClientOnly>
           {() => (
             <SendButton
-              show={props.input.length > 0 || props.isStreaming || props.uploadedFiles.length > 0}
+              show={
+                props.input.length > 0 ||
+                props.isStreaming ||
+                props.uploadedFiles.length > 0 ||
+                props.imageDataList.length > 0
+              }
               isStreaming={props.isStreaming}
               disabled={!props.providerList || props.providerList.length === 0}
               onClick={(event) => {
@@ -223,7 +233,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                   return;
                 }
 
-                if (props.input.length > 0 || props.uploadedFiles.length > 0) {
+                if (props.input.length > 0 || props.uploadedFiles.length > 0 || props.imageDataList.length > 0) {
                   props.handleSendMessage?.(event);
                 }
               }}

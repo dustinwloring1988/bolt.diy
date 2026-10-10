@@ -37,10 +37,20 @@ export async function loadServerBuild(): Promise<any> {
 // serve assets built by vite.
 export async function serveAsset(req: Request, assetsPath: string): Promise<Response | undefined> {
   const url = new URL(req.url);
-  const fullPath = path.join(assetsPath, decodeURIComponent(url.pathname));
-  console.log('Serving asset, path:', fullPath);
+  let decodedPath: string;
 
-  if (!fullPath.startsWith(assetsPath)) {
+  try {
+    decodedPath = decodeURIComponent(url.pathname).replace(/^[/\\]+/, '');
+  } catch {
+    return;
+  }
+
+  const resolvedAssetsPath = path.resolve(assetsPath);
+  const fullPath = path.resolve(resolvedAssetsPath, decodedPath);
+  console.log('Serving asset, path:', fullPath);
+  const relativePath = path.relative(resolvedAssetsPath, fullPath);
+
+  if (relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
     console.log('Path is outside assets directory:', fullPath);
     return;
   }

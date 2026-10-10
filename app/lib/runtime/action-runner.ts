@@ -240,7 +240,10 @@ export class ActionRunner {
         return;
       }
 
-      this.#updateAction(actionId, { status: 'failed', error: 'Action failed' });
+      this.#updateAction(actionId, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Action failed',
+      });
       logger.error(`[${action.type}]:Action failed\n\n`, error);
 
       if (!(error instanceof ActionCommandError)) {
@@ -349,6 +352,7 @@ export class ActionRunner {
         logger.debug('Created folder', folder);
       } catch (error) {
         logger.error('Failed to create folder\n\n', error);
+        throw error;
       }
     }
 
@@ -357,6 +361,7 @@ export class ActionRunner {
       logger.debug(`File written ${relativePath}`);
     } catch (error) {
       logger.error('Failed to write file\n\n', error);
+      throw error;
     }
   }
 
