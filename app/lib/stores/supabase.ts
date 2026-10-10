@@ -105,6 +105,7 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
   if (accountChanged || tokenChanged || connectionStatusChanged) {
     connectionRevision++;
     apiKeyRequestRevision++;
+    isFetchingApiKeys.set(false);
   }
 
   if (connection.user !== undefined || connection.token !== undefined) {

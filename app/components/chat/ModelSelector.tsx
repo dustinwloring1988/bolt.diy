@@ -110,6 +110,10 @@ export const ModelSelector = ({
   }, [providerList, modelList]);
 
   useEffect(() => {
+    setSelectedProvider(provider);
+  }, [provider]);
+
+  useEffect(() => {
     if (providerList.length > 0 && (!provider || !providerList.some((candidate) => candidate.name === provider.name))) {
       const fallback = providerList[0];
       setSelectedProvider(fallback);
@@ -123,8 +127,6 @@ export const ModelSelector = ({
 
       return;
     }
-
-    setSelectedProvider(provider);
   }, [provider, providerList, modelList, setProvider, setModel]);
 
   useEffect(() => {
