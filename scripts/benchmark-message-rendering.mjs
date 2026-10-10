@@ -27,31 +27,42 @@ try {
       container.getBoundingClientRect();
     };
 
-    const medianDuration = (operation, iterations = 20, samples = 25) => {
-      for (let index = 0; index < 5; index += 1) {
-        operation();
-      }
-
-      const durations = Array.from({ length: samples }, () => {
-        const start = performance.now();
-
-        for (let iteration = 0; iteration < iterations; iteration += 1) {
-          operation();
-        }
-
-        return (performance.now() - start) / iterations;
-      }).sort((left, right) => left - right);
-
-      return durations[Math.floor(durations.length / 2)];
-    };
-
     const container = document.querySelector('#messages');
     const messages10 = createMessages(10);
     const messages50 = createMessages(50);
-    const time10 = medianDuration(() => renderMessages(messages10, container));
-    const time50 = medianDuration(() => renderMessages(messages50, container));
+    const workloads = {
+      10: () => renderMessages(messages10, container),
+      50: () => renderMessages(messages50, container),
+    };
 
-    return { time10, time50 };
+    for (let index = 0; index < 5; index += 1) {
+      workloads[index % 2 === 0 ? 10 : 50]();
+      workloads[index % 2 === 0 ? 50 : 10]();
+    }
+
+    const samples = Array.from({ length: 25 }, (_, index) => {
+      const order = index % 2 === 0 ? [10, 50] : [50, 10];
+      const durations = {};
+
+      for (const size of order) {
+        const start = performance.now();
+
+        for (let iteration = 0; iteration < 20; iteration += 1) {
+          workloads[size]();
+        }
+
+        durations[size] = (performance.now() - start) / 20;
+      }
+
+      return { order, time10: durations[10], time50: durations[50] };
+    });
+
+    const median = (key) => {
+      const durations = samples.map((sample) => sample[key]).sort((left, right) => left - right);
+      return durations[Math.floor(durations.length / 2)];
+    };
+
+    return { time10: median('time10'), time50: median('time50'), samples };
   });
 
   if (!Number.isFinite(timings.time10) || !Number.isFinite(timings.time50)) {
@@ -60,6 +71,7 @@ try {
 
   console.log(`Chromium median render (10 messages): ${timings.time10.toFixed(4)}ms`);
   console.log(`Chromium median render (50 messages): ${timings.time50.toFixed(4)}ms`);
+  console.log(`Interleaved raw samples: ${JSON.stringify(timings.samples)}`);
 } finally {
   await browser.close();
 }

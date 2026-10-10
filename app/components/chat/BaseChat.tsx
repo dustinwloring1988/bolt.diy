@@ -257,11 +257,20 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         setApiKeys(updatedKeys);
 
         const sequence = ++allProviderFetchSequence.current;
+        const keySequenceSnapshot = new Map(apiKeyFetchSequence.current);
         setIsModelLoading('all');
         fetchModelList()
           .then((modelList) => {
             if (sequence === allProviderFetchSequence.current) {
-              setModelList(modelList);
+              const refreshedProviders = new Set(
+                [...apiKeyFetchSequence.current]
+                  .filter(([name, current]) => current !== keySequenceSnapshot.get(name))
+                  .map(([name]) => name),
+              );
+              setModelList((currentModels) => [
+                ...modelList.filter((model) => !refreshedProviders.has(model.provider)),
+                ...currentModels.filter((model) => refreshedProviders.has(model.provider)),
+              ]);
             }
           })
           .catch((error) => console.error('Error refreshing models after API key update:', error))
