@@ -144,9 +144,18 @@ export class StreamingMessageParser {
           const closeIndex = input.indexOf(ARTIFACT_ACTION_TAG_CLOSE, i);
           const currentAction = state.currentAction;
 
-          /* A file payload may contain artifact markup; do not treat it as a model restart boundary. */
-          const restartCandidate =
-            'type' in currentAction && currentAction.type === 'file' ? -1 : this.#findRestartedArtifact(input, i);
+          const isFileAction = 'type' in currentAction && currentAction.type === 'file';
+          const candidate = this.#findRestartedArtifact(input, i);
+
+          const isLineBoundaryRestart =
+            candidate !== -1 && /^[\t ]*$/.test(input.slice(input.lastIndexOf('\n', candidate - 1) + 1, candidate));
+
+          /* Complete nested protocol examples belong to file content; recover only from a line-start restart. */
+          const restartCandidate = isFileAction
+            ? isLineBoundaryRestart && closeIndex === -1
+              ? candidate
+              : -1
+            : candidate;
           const restartedArtifactIndex =
             restartCandidate !== -1 && (closeIndex === -1 || restartCandidate < closeIndex) ? restartCandidate : -1;
 

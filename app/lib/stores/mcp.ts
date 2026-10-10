@@ -123,8 +123,8 @@ function restorePostHogSessionToken(settings: MCPSettings) {
 
   const server = settings.mcpConfig.mcpServers[POSTHOG_SERVER_ID];
 
-  if (server && 'headers' in server) {
-    const headers = server.headers ?? {};
+  if (server && server.type !== 'stdio') {
+    const headers = 'headers' in server ? (server.headers ?? {}) : {};
     const legacyAuthorization = headers.Authorization;
     const sessionToken = sessionStorage.getItem(POSTHOG_SESSION_TOKEN_KEY);
     const token = sessionToken || (legacyAuthorization?.startsWith('Bearer ') ? legacyAuthorization.slice(7) : '');

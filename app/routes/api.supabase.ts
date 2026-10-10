@@ -1,7 +1,8 @@
-import type { ActionFunction } from 'react-router';
+import type { ActionFunctionArgs } from 'react-router';
+import { withSecurity } from '~/lib/security';
 import type { SupabaseProject } from '~/types/supabase';
 
-export const action: ActionFunction = async ({ request, context }) => {
+async function supabaseAction({ request, context }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
@@ -59,4 +60,9 @@ export const action: ActionFunction = async ({ request, context }) => {
       { status: 401 },
     );
   }
-};
+}
+
+export const action = withSecurity(supabaseAction, {
+  allowedMethods: ['POST'],
+  rateLimit: true,
+});

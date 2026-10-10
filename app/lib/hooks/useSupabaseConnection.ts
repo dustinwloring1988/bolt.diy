@@ -52,8 +52,8 @@ export function useSupabaseConnection() {
           updateSupabaseConnection(parsed);
         }
 
-        if (parsed.token && parsed.selectedProjectId && !parsed.credentials) {
-          fetchProjectApiKeys(parsed.selectedProjectId, parsed.token).catch(console.error);
+        if (parsed.selectedProjectId && !parsed.credentials && (parsed.token || currentState.isConnected)) {
+          fetchProjectApiKeys(parsed.selectedProjectId, parsed.token || currentState.token).catch(console.error);
         }
       }
     };
@@ -126,7 +126,7 @@ export function useSupabaseConnection() {
       project: projectData,
     });
 
-    if (projectId && currentState.token) {
+    if (projectId && (currentState.token || currentState.isConnected)) {
       try {
         await fetchProjectApiKeys(projectId, currentState.token);
         toast.success('Project selected successfully');
@@ -159,7 +159,7 @@ export function useSupabaseConnection() {
     selectProject,
     handleCreateProject,
     updateToken: (token: string) => updateSupabaseConnection({ ...connection, token }),
-    isConnected: !!(connection.user && connection.token),
+    isConnected: !!(connection.user && (connection.token || connection.isConnected)),
     fetchProjectApiKeys: (projectId: string) => {
       if (connection.token) {
         return fetchProjectApiKeys(projectId, connection.token);
