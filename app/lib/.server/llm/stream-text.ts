@@ -11,9 +11,9 @@ import { createFilesContext, extractPropertiesFromMessage } from './utils';
 import { PromptLibrary } from '~/lib/common/prompt-library';
 import { discussPrompt } from '~/lib/common/prompts/discuss-prompt';
 import { getSystemPrompt } from '~/lib/common/prompts/prompts';
+import { AVAILABLE_SKILLS } from '~/lib/common/skills';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
-import { AVAILABLE_SKILLS } from '~/lib/stores/skills';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { IProviderSetting } from '~/types/model';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
@@ -213,17 +213,20 @@ export async function streamText(props: {
 
   let systemPrompt =
     chatMode === 'build'
-      ? (PromptLibrary.getPropmtFromLibrary(promptId || 'default', {
-          cwd: WORK_DIR,
-          allowedHtmlElements: allowedHTMLElements,
-          modificationTagName: MODIFICATIONS_TAG_NAME,
-          designScheme,
-          supabase: {
-            isConnected: options?.supabaseConnection?.isConnected || false,
-            hasSelectedProject: options?.supabaseConnection?.hasSelectedProject || false,
-            credentials: options?.supabaseConnection?.credentials || undefined,
+      ? (PromptLibrary.getPropmtFromLibrary(
+          PromptLibrary.getList().some((prompt) => prompt.id === promptId) ? promptId! : 'default',
+          {
+            cwd: WORK_DIR,
+            allowedHtmlElements: allowedHTMLElements,
+            modificationTagName: MODIFICATIONS_TAG_NAME,
+            designScheme,
+            supabase: {
+              isConnected: options?.supabaseConnection?.isConnected || false,
+              hasSelectedProject: options?.supabaseConnection?.hasSelectedProject || false,
+              credentials: options?.supabaseConnection?.credentials || undefined,
+            },
           },
-        }) ?? getSystemPrompt())
+        ) ?? getSystemPrompt())
       : discussPrompt();
 
   // Inject workstyle commentary guidance for build mode

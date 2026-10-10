@@ -40,9 +40,11 @@ function medianDuration(operation: () => void, iterations = 20, samples = 25): n
 
   const durations = Array.from({ length: samples }, () => {
     const start = performance.now();
+
     for (let iteration = 0; iteration < iterations; iteration += 1) {
       operation();
     }
+
     return (performance.now() - start) / iterations;
   }).sort((left, right) => left - right);
 
@@ -83,13 +85,16 @@ And more text after.
       const blocks: { language: string; code: string }[] = [];
       let match: RegExpExecArray | null;
 
+
       while ((match = codeBlockRegex.exec(content)) !== null) {
         blocks.push({ language: match[1] || 'plaintext', code: match[2] });
       }
 
       codeBlockRegex.lastIndex = 0;
+
       return blocks;
     };
+
     const duration = medianDuration(() => processContent());
 
     console.log(`Median code extraction: ${duration.toFixed(4)}ms`);
@@ -102,6 +107,7 @@ describe('Message List Operations', () => {
 
   it('reports median append and update timings for a 1000 message list', () => {
     const appendTime = medianDuration(() => [...messages, createMessage(1_001)]);
+
     const updateTime = medianDuration(() =>
       messages.map((message) => (message.id === 'msg-500' ? { ...message, content: 'Updated content' } : message)),
     );

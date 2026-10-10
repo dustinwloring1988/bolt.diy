@@ -162,7 +162,7 @@ export function useSupabaseConnection() {
     isConnected: !!(connection.user && (connection.token || connection.isConnected)),
     fetchProjectApiKeys: (projectId: string) => {
       if (connection.token || connection.isConnected) {
-        return fetchProjectApiKeys(projectId, connection.token);
+        return fetchProjectApiKeys(projectId, connection.token || '');
       }
 
       return Promise.reject(new Error('No token available'));

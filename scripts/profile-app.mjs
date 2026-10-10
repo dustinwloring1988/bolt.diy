@@ -153,11 +153,22 @@ try {
     };
   });
 
-  const completion = new Promise((resolveCompletion) => {
-    session.once('Tracing.tracingComplete', resolveCompletion);
+  let completionTimeout;
+  let onTracingComplete;
+  const completion = new Promise((resolveCompletion, rejectCompletion) => {
+    onTracingComplete = (result) => resolveCompletion(result);
+    session.once('Tracing.tracingComplete', onTracingComplete);
+    completionTimeout = setTimeout(() => rejectCompletion(new Error('Timed out waiting for tracing to complete.')), 30_000);
   });
-  await session.send('Tracing.end');
-  const traceResult = await completion;
+  let traceResult;
+
+  try {
+    await session.send('Tracing.end');
+    traceResult = await completion;
+  } finally {
+    clearTimeout(completionTimeout);
+    session.removeListener('Tracing.tracingComplete', onTracingComplete);
+  }
   const trace = await readTrace(session, traceResult.stream);
 
   const summary = {

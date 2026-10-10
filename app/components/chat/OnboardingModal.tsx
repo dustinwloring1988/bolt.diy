@@ -15,6 +15,7 @@ import {
   updateWebSearchProvider,
   webSearchEnabledStore,
   webSearchProviderStore,
+  promptStore,
   updatePromptId,
   type WebSearchProvider,
 } from '~/lib/stores/settings';
@@ -257,7 +258,7 @@ export function OnboardingModal() {
   const [searchProvider, setSearchProvider] = useState<WebSearchProvider>(() => webSearchProviderStore.get());
 
   // Prompt state
-  const [selectedPromptId, setSelectedPromptId] = useState('default');
+  const [selectedPromptId, setSelectedPromptId] = useState(() => promptStore.get());
 
   const promptList = PromptLibrary.getList();
 
@@ -347,6 +348,7 @@ export function OnboardingModal() {
       });
 
       Cookies.set('apiKeys', JSON.stringify(updatedApiKeys));
+      window.dispatchEvent(new Event('apiKeysUpdated'));
 
       const connectorResults = await Promise.allSettled(
         CONNECTOR_LIST.map(async (connector) => {

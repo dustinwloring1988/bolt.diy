@@ -23,7 +23,16 @@ export default function PostHogTab() {
 
   const mcpServers = settings?.mcpConfig?.mcpServers;
   const safeMcpServers = mcpServers && typeof mcpServers === 'object' ? mcpServers : {};
-  const isConnected = !!safeMcpServers[SERVER_ID];
+
+  const configuredServer = safeMcpServers[SERVER_ID];
+
+  const isConnected = Boolean(
+    configuredServer &&
+    configuredServer.type !== 'stdio' &&
+    'headers' in configuredServer &&
+    configuredServer.headers?.Authorization,
+  );
+
   const availableTools = server?.status === 'available' ? Object.keys(server.tools).length : 0;
 
   const handleConnect = async (event: FormEvent<HTMLFormElement>) => {
@@ -142,8 +151,8 @@ export default function PostHogTab() {
               className="w-full rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-3 py-2 text-sm text-bolt-elements-textPrimary outline-none focus:border-bolt-elements-item-contentAccent"
             />
             <p className="mt-2 text-xs text-bolt-elements-textTertiary">
-              Create a personal API key in PostHog with the MCP Server preset. The key is saved in this browser’s MCP
-              configuration.
+              Create a personal API key in PostHog with the MCP Server preset. The key is kept only for this browser
+              session.
             </p>
           </div>
           <a

@@ -44,5 +44,5 @@ function classifyRepairFailure(diagnostic: string): string | undefined {
 }
 
 export function getRepairFingerprint(alert: ActionAlert): string {
-  return [alert.source, alert.title, alert.description, alert.content].join('\n').trim();
+  return JSON.stringify([alert.source, alert.title, alert.description, alert.content]);
 }

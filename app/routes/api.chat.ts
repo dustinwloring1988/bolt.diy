@@ -8,6 +8,7 @@ import {
 } from 'ai';
 import type { ActionFunctionArgs } from 'react-router';
 import { z } from 'zod';
+import { webSearchAction } from './api.web-search';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { createSummary } from '~/lib/.server/llm/create-summary';
 import { getFilePaths, selectContext } from '~/lib/.server/llm/select-context';
@@ -16,7 +17,7 @@ import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
-import { withSecurity } from '~/lib/security';
+import { checkRateLimit, withSecurity } from '~/lib/security';
 import { MCPService } from '~/lib/services/mcpService';
 import type { ContextAnnotation, ProgressAnnotation } from '~/types/context';
 import type { DesignScheme } from '~/types/design-scheme';
@@ -335,6 +336,28 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           'Content-Type': 'application/json',
           ...(clientAddress ? { 'x-forwarded-for': clientAddress } : {}),
         };
+        const runWebSearch = async (body: Record<string, unknown>, timeoutMs: number) => {
+          const rateLimit = checkRateLimit(request, '/api/web-search');
+
+          if (!rateLimit.allowed) {
+            return Response.json({ error: 'Rate limit exceeded' }, { status: 429 });
+          }
+
+          const searchRequest = new Request(new URL('/api/web-search', request.url), {
+            method: 'POST',
+            headers: webSearchRequestHeaders,
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+
+          return webSearchAction({
+            request: searchRequest,
+            context,
+            params: {},
+            url: new URL(searchRequest.url),
+            pattern: '/api/web-search',
+          });
+        };
 
         const webTools = webSearchEnabled
           ? {
@@ -347,12 +370,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 }),
                 execute: async ({ query, numResults }: { query: string; numResults?: number }) => {
                   try {
-                    const res = await fetch(new URL('/api/web-search', request.url), {
-                      method: 'POST',
-                      headers: webSearchRequestHeaders,
-                      body: JSON.stringify({ query, provider: webSearchProvider || 'exa', numResults }),
-                      signal: AbortSignal.timeout(25_000),
-                    });
+                    const res = await runWebSearch({ query, provider: webSearchProvider || 'exa', numResults }, 25_000);
 
                     if (!res.ok) {
                       const err = (await res.json().catch(() => ({ error: 'Unknown error' }))) as { error?: string };
@@ -383,12 +401,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 }),
                 execute: async ({ url }: { url: string }) => {
                   try {
-                    const res = await fetch(new URL('/api/web-search', request.url), {
-                      method: 'POST',
-                      headers: webSearchRequestHeaders,
-                      body: JSON.stringify({ url }),
-                      signal: AbortSignal.timeout(10_000),
-                    });
+                    const res = await runWebSearch({ url }, 10_000);
 
                     if (!res.ok) {
                       const err = (await res.json().catch(() => ({ error: 'Unknown error' }))) as { error?: string };
@@ -423,7 +436,13 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
            * bolt cannot execute. Bolt's own file edits travel as
            * <boltAction> text tags, so they need no tool registration.
            */
-          ...(hasTools ? { toolChoice: 'auto' as const, tools: allTools } : {}),
+          ...(hasTools
+            ? {
+                toolChoice: 'auto' as const,
+                tools: allTools,
+                stopWhen: isStepCount(Math.max(maxLLMSteps ?? 1, webSearchEnabled ? 2 : 1)),
+              }
+            : {}),
 
           /*
            * isStepCount(undefined) can never be true, and supplying it replaces

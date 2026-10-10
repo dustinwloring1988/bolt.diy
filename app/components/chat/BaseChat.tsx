@@ -207,6 +207,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         const sequence = ++allProviderFetchSequence.current;
         const keySequenceSnapshot = new Map(apiKeyFetchSequence.current);
         setIsModelLoading('all');
+
         fetch('/api/models')
           .then((response) => response.json())
           .then((data) => {
@@ -237,11 +238,38 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       }
     }, [providerList, provider]);
 
+    useEffect(() => {
+      const syncApiKeys = () => {
+        const updatedKeys = getApiKeysFromCookies();
+        setApiKeys(updatedKeys);
+
+        const sequence = ++allProviderFetchSequence.current;
+        setIsModelLoading('all');
+        fetch('/api/models')
+          .then((response) => response.json())
+          .then((data) => {
+            if (sequence === allProviderFetchSequence.current) {
+              setModelList((data as { modelList: ModelInfo[] }).modelList);
+            }
+          })
+          .catch((error) => console.error('Error refreshing models after API key update:', error))
+          .finally(() => {
+            if (sequence === allProviderFetchSequence.current) {
+              setIsModelLoading(undefined);
+            }
+          });
+      };
+
+      window.addEventListener('apiKeysUpdated', syncApiKeys);
+
+      return () => window.removeEventListener('apiKeysUpdated', syncApiKeys);
+    }, []);
+
     const onApiKeysChange = (providerName: string, apiKey: string) => {
       const sequence = (apiKeyFetchSequence.current.get(providerName) ?? 0) + 1;
       apiKeyFetchSequence.current.set(providerName, sequence);
 
-      const newApiKeys = { ...apiKeys, [providerName]: apiKey };
+      const newApiKeys = { ...getApiKeysFromCookies(), ...apiKeys, [providerName]: apiKey };
       setApiKeys(newApiKeys);
       Cookies.set('apiKeys', JSON.stringify(newApiKeys));
 

@@ -129,7 +129,19 @@ async function askYesNo(question) {
   }
 }
 
-function envValue(value) {
+function envValue(value, key) {
+  if (key === 'AWS_BEDROCK_CONFIG') {
+    let config;
+
+    try {
+      config = JSON.stringify(JSON.parse(value));
+    } catch {
+      throw new Error('Amazon Bedrock credentials must be valid JSON.');
+    }
+
+    return `'${config.replace(/'/g, '\\u0027')}'`;
+  }
+
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '')}"`;
 }
 
@@ -200,7 +212,7 @@ async function main() {
 
   for (const [key, value] of entries) {
     const assignment = new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`);
-    const newLine = `${key}=${envValue(value)}`;
+    const newLine = `${key}=${envValue(value, key)}`;
     let didReplace = false;
 
     for (let index = 0; index < lines.length; index++) {

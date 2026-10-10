@@ -141,64 +141,8 @@ export class StreamingMessageParser {
         }
 
         if (state.insideAction) {
-          const closeIndex = input.indexOf(ARTIFACT_ACTION_TAG_CLOSE, i);
           const currentAction = state.currentAction;
-
-          const isShellAction = 'type' in currentAction && currentAction.type === 'shell';
-
-          const restartedArtifactIndex = this.#findRestartedArtifact(input, i, (candidate) => {
-            const isLineBoundary = /^[\t \r]*$/.test(
-              input.slice(input.lastIndexOf('\n', candidate - 1) + 1, candidate),
-            );
-
-            /*
-             * Shell bodies commonly contain protocol-like text in heredocs, so they are never restart boundaries.
-             * File examples remain ambiguous without explicit escaping, so only recover at an actual line boundary.
-             */
-            return !isShellAction && isLineBoundary && (closeIndex === -1 || candidate < closeIndex);
-          });
-
-          if (restartedArtifactIndex !== -1) {
-            /*
-             * Some models restart the artifact protocol before closing the
-             * current file action. Close the current action at that boundary
-             * and resume parsing from the new artifact. The prefix is kept as
-             * the action's final content so streamed file writes are finalized
-             * consistently with a normal action close.
-             */
-            currentAction.content += input.slice(i, restartedArtifactIndex);
-
-            let content = currentAction.content.trim();
-
-            if ('type' in currentAction && currentAction.type === 'file') {
-              if (!currentAction.filePath?.endsWith('.md')) {
-                content = cleanoutMarkdownSyntax(content);
-                content = cleanEscapedTags(content);
-              }
-
-              content += '\n';
-            }
-
-            currentAction.content = content;
-            this._options.callbacks?.onActionClose?.({
-              artifactId: currentArtifact.id,
-              messageId,
-              actionId: String(state.actionId - 1),
-              action: currentAction as BoltAction,
-            });
-            this._options.callbacks?.onArtifactClose?.({
-              messageId,
-              artifactId: currentArtifact.id,
-              ...currentArtifact,
-            });
-
-            state.insideAction = false;
-            state.insideArtifact = false;
-            state.currentArtifact = undefined;
-            state.currentAction = { content: '' };
-            i = restartedArtifactIndex;
-            continue;
-          }
+          const closeIndex = input.indexOf(ARTIFACT_ACTION_TAG_CLOSE, i);
 
           if (closeIndex !== -1) {
             currentAction.content += input.slice(i, closeIndex);
@@ -399,36 +343,6 @@ export class StreamingMessageParser {
 
   reset() {
     this.#messages.clear();
-  }
-
-  #findRestartedArtifact(input: string, from: number, isRestartBoundary: (candidate: number) => boolean): number {
-    let candidate = input.indexOf(ARTIFACT_TAG_OPEN, from);
-
-    while (candidate !== -1) {
-      const tagEnd = input.indexOf('>', candidate);
-
-      if (tagEnd === -1) {
-        return -1;
-      }
-
-      const openingTag = input.slice(candidate, tagEnd + 1);
-      const nextAction = input.indexOf(ARTIFACT_ACTION_TAG_OPEN, tagEnd + 1);
-      const nextArtifact = input.indexOf(ARTIFACT_TAG_OPEN, tagEnd + 1);
-
-      if (
-        /\btitle="[^"]+"/.test(openingTag) &&
-        nextAction !== -1 &&
-        nextAction - tagEnd < 2_000 &&
-        (nextArtifact === -1 || nextAction < nextArtifact) &&
-        isRestartBoundary(candidate)
-      ) {
-        return candidate;
-      }
-
-      candidate = input.indexOf(ARTIFACT_TAG_OPEN, candidate + ARTIFACT_TAG_OPEN.length);
-    }
-
-    return -1;
   }
 
   #parseActionTag(input: string, actionOpenIndex: number, actionEndIndex: number) {

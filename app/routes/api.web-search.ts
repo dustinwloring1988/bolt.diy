@@ -238,7 +238,12 @@ async function exaSearch(query: string, numResults = 8): Promise<ExaSearchResult
   const body = await res.text();
 
   // Parse response: can be direct JSON or SSE (data: {...})
-  let parsed: { result?: { content?: Array<{ type: string; text: string }> } } | undefined;
+  let parsed:
+    | {
+        error?: { message?: string };
+        result?: { isError?: boolean; content?: Array<{ type: string; text: string }> };
+      }
+    | undefined;
 
   const trimmed = body.trim();
 
@@ -256,6 +261,12 @@ async function exaSearch(query: string, numResults = 8): Promise<ExaSearchResult
         }
       }
     }
+  }
+
+  if (parsed?.error || parsed?.result?.isError) {
+    throw new Error(
+      parsed.error?.message || parsed.result?.content?.map(({ text }) => text).join('\n') || 'Exa MCP tool call failed',
+    );
   }
 
   const text = parsed?.result?.content?.find((c) => c.type === 'text')?.text;
@@ -440,7 +451,7 @@ function extractMeta(html: string, attr: string): string {
 
 // ── Route handler ───────────────────────────────────────────────────────────────
 
-async function webSearchAction({ request, context }: ActionFunctionArgs) {
+export async function webSearchAction({ request, context }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }

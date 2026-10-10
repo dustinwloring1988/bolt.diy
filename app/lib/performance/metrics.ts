@@ -352,7 +352,10 @@ export function observeWebVitals() {
       onLCP((metric) => performanceMonitor.recordMetric('web-vitals:lcp', metric.value, { rating: metric.rating }));
       onTTFB((metric) => performanceMonitor.recordMetric('web-vitals:ttfb', metric.value, { rating: metric.rating }));
     })
-    .catch((error) => console.warn('Failed to load web-vitals:', error));
+    .catch((error) => {
+      webVitalsObserversStarted = false;
+      console.warn('Failed to load web-vitals:', error);
+    });
 
   if (typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
     const observer = new PerformanceObserver((list) => {
