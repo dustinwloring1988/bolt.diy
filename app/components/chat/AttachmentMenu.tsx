@@ -1,6 +1,8 @@
 import { useStore } from '@nanostores/react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { isGitHubConnected } from '~/lib/stores/githubConnection';
 import { skillsStore, toggleSkill } from '~/lib/stores/skills';
+import { supabaseConnection } from '~/lib/stores/supabase';
 import { classNames } from '~/utils/classNames';
 
 interface AttachmentMenuProps {
@@ -23,6 +25,16 @@ export function AttachmentMenu({
   isEnhanceDisabled = false,
 }: AttachmentMenuProps) {
   const skills = useStore(skillsStore);
+  const githubConnected = useStore(isGitHubConnected);
+  const supabaseConnected = useStore(supabaseConnection).isConnected ?? false;
+
+  const statusDot = (active: boolean, label: string) => (
+    <span
+      aria-label={`${label} ${active ? 'active' : 'inactive'}`}
+      title={`${label} ${active ? 'active' : 'inactive'}`}
+      className={classNames('ml-auto h-2 w-2 shrink-0 rounded-full', active ? 'bg-green-500' : 'bg-red-500')}
+    />
+  );
 
   return (
     <DropdownMenu.Root>
@@ -141,35 +153,41 @@ export function AttachmentMenu({
               >
                 <DropdownMenu.Item
                   className={classNames(
-                    'flex items-center gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
+                    'flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
                     'text-bolt-elements-textPrimary',
                     'hover:bg-bolt-elements-background-depth-3',
                     'outline-none transition-colors',
                   )}
                   onSelect={onSupabaseConnect}
                 >
-                  <img
-                    className="w-4 h-4"
-                    height="16"
-                    width="16"
-                    crossOrigin="anonymous"
-                    src="https://cdn.simpleicons.org/supabase"
-                    alt="Supabase"
-                  />
-                  <span>Supabase</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <img
+                      className="w-4 h-4"
+                      height="16"
+                      width="16"
+                      crossOrigin="anonymous"
+                      src="https://cdn.simpleicons.org/supabase"
+                      alt=""
+                    />
+                    <span>Supabase</span>
+                  </span>
+                  {statusDot(supabaseConnected, 'Supabase')}
                 </DropdownMenu.Item>
 
                 <DropdownMenu.Item
                   className={classNames(
-                    'flex items-center gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
+                    'flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm cursor-pointer',
                     'text-bolt-elements-textPrimary',
                     'hover:bg-bolt-elements-background-depth-3',
                     'outline-none transition-colors',
                   )}
                   onSelect={onGithubConnect}
                 >
-                  <div className="i-ph:github-logo text-lg"></div>
-                  <span>GitHub</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <div className="i-ph:github-logo text-lg"></div>
+                    <span>GitHub</span>
+                  </span>
+                  {statusDot(githubConnected, 'GitHub')}
                 </DropdownMenu.Item>
               </DropdownMenu.SubContent>
             </DropdownMenu.Portal>
@@ -230,6 +248,7 @@ export function AttachmentMenu({
                       </div>
                       <div className="i-ph:star text-lg shrink-0"></div>
                       <span className="truncate">{skill.name}</span>
+                      {statusDot(skill.enabled, skill.name)}
                     </DropdownMenu.CheckboxItem>
                   ))
                 )}
