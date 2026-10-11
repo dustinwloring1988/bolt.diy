@@ -313,9 +313,9 @@ export default function LocalProvidersTab() {
               <p className="text-sm text-bolt-elements-textSecondary">Configure and manage your local AI models</p>
             </div>
           </div>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-bolt-elements-textSecondary">Enable All</span>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex h-8 items-center gap-3 rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 px-3">
+              <span className="text-xs font-medium text-bolt-elements-textSecondary whitespace-nowrap">Enable all</span>
               <Switch
                 checked={categoryEnabled}
                 onCheckedChange={handleToggleCategory}
@@ -327,7 +327,8 @@ export default function LocalProvidersTab() {
                 variant="outline"
                 size="sm"
                 onClick={() => setViewMode('guide')}
-                className="bg-bolt-elements-background-depth-2 hover:bg-bolt-elements-background-depth-3 border-bolt-elements-borderColor hover:border-purple-500/30 transition-all duration-200 gap-2"
+                className="bg-bolt-elements-background-depth-2 hover:bg-bolt-elements-background-depth-3 hover:border-bolt-elements-borderColorActive transition-colors duration-200 gap-2"
+                style={{ borderColor: 'var(--bolt-elements-borderColor)' }}
               >
                 <BookOpen className="w-4 h-4" />
                 Setup Guide
@@ -336,7 +337,8 @@ export default function LocalProvidersTab() {
                 variant="outline"
                 size="sm"
                 onClick={() => setViewMode('status')}
-                className="bg-bolt-elements-background-depth-2 hover:bg-bolt-elements-background-depth-3 border-bolt-elements-borderColor hover:border-purple-500/30 transition-all duration-200 gap-2"
+                className="bg-bolt-elements-background-depth-2 hover:bg-bolt-elements-background-depth-3 hover:border-bolt-elements-borderColorActive transition-colors duration-200 gap-2"
+                style={{ borderColor: 'var(--bolt-elements-borderColor)' }}
               >
                 <Activity className="w-4 h-4" />
                 Status
