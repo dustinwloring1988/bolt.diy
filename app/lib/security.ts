@@ -1,7 +1,14 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from 'react-router';
 
-// Rate limiting store (in-memory for serverless environments)
+// In-memory fallback is only used during local development.
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+const redisRateLimitScript = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return { count, redis.call('PTTL', KEYS[1]) }
+`;
 
 // Rate limit configuration
 const RATE_LIMITS: Record<string, { windowMs: number; maxRequests: number }> = {
@@ -22,72 +29,99 @@ const RATE_LIMITS: Record<string, { windowMs: number; maxRequests: number }> = {
 /**
  * Rate limiting middleware
  */
-export function checkRateLimit(
+export async function checkRateLimit(
   request: Request,
   endpoint: string,
   context?: unknown,
-): { allowed: boolean; resetTime?: number; unavailable?: boolean } {
-  const clientIP = getTrustedClientIP(request, context);
-
-  if (!clientIP) {
-    return { allowed: false, unavailable: true };
-  }
-
-  const key = `${clientIP}:${endpoint}`;
-
-  // Find matching rate limit rule: exact match first, then specific prefix, then generic wildcard
-  const entries = Object.entries(RATE_LIMITS);
-
-  const rule =
-    entries.find(([pattern]) => pattern === endpoint) ||
-    entries.find(([pattern]) => {
-      if (pattern.endsWith('*') && !pattern.endsWith('/*')) {
-        const basePattern = pattern.slice(0, -1);
-        return endpoint.startsWith(basePattern);
-      }
-
-      return false;
-    }) ||
-    entries.find(([pattern]) => {
-      if (pattern.endsWith('/*')) {
-        const basePattern = pattern.slice(0, -2);
-        return endpoint.startsWith(basePattern);
-      }
-
-      return false;
-    });
+): Promise<{ allowed: boolean; resetTime?: number; unavailable?: boolean }> {
+  const rule = findRateLimitRule(endpoint);
 
   if (!rule) {
-    return { allowed: true }; // No rate limit for this endpoint
+    return { allowed: true };
   }
 
-  const [, config] = rule;
+  const clientIP = getTrustedClientIP(request, context) || 'anonymous';
+  const [, configuredLimit] = rule;
+  const config = clientIP === 'anonymous' ? { windowMs: 60_000, maxRequests: 10 } : configuredLimit;
   const now = Date.now();
+  const resetTime = (Math.floor(now / config.windowMs) + 1) * config.windowMs;
+  const environment = (context as { cloudflare?: { env?: Record<string, unknown> } } | undefined)?.cloudflare?.env;
+  const redisUrl = getRuntimeSetting(environment, 'UPSTASH_REDIS_REST_URL');
+  const redisToken = getRuntimeSetting(environment, 'UPSTASH_REDIS_REST_TOKEN');
 
-  // Clean up old entries periodically to avoid O(N) cost on every single request
+  if (!redisUrl || !redisToken) {
+    if (process.env.NODE_ENV === 'production') {
+      return { allowed: false, unavailable: true };
+    }
+
+    return checkInMemoryRateLimit(clientIP, endpoint, config, now);
+  }
+
+  try {
+    const identity = `${clientIP}:${endpoint}:${Math.floor(now / config.windowMs)}`;
+    const identityHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
+    const key = `ratelimit:${Array.from(new Uint8Array(identityHash), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+    const response = await fetch(redisUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${redisToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(['EVAL', redisRateLimitScript, '1', key, String(config.windowMs)]),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Rate limit store returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as { result?: [number, number]; error?: string };
+    if (payload.error || !Array.isArray(payload.result) || typeof payload.result[0] !== 'number') {
+      throw new Error('Rate limit store returned an invalid response');
+    }
+
+    return { allowed: payload.result[0] <= config.maxRequests, resetTime };
+  } catch (error) {
+    console.error('Distributed rate limit check failed:', error);
+    return { allowed: false, resetTime, unavailable: true };
+  }
+}
+
+function getRuntimeSetting(environment: Record<string, unknown> | undefined, name: string): string | undefined {
+  const value = environment?.[name] ?? process.env[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function findRateLimitRule(endpoint: string) {
+  const entries = Object.entries(RATE_LIMITS);
+
+  return (
+    entries.find(([pattern]) => pattern === endpoint) ||
+    entries.find(([pattern]) => pattern.endsWith('*') && !pattern.endsWith('/*') && endpoint.startsWith(pattern.slice(0, -1))) ||
+    entries.find(([pattern]) => pattern.endsWith('/*') && endpoint.startsWith(pattern.slice(0, -2)))
+  );
+}
+
+function checkInMemoryRateLimit(
+  clientIP: string,
+  endpoint: string,
+  config: { windowMs: number; maxRequests: number },
+  now: number,
+) {
   if (rateLimitStore.size > 200) {
     for (const [storedKey, data] of rateLimitStore.entries()) {
-      if (data.resetTime < now) {
-        rateLimitStore.delete(storedKey);
-      }
+      if (data.resetTime <= now) rateLimitStore.delete(storedKey);
     }
   }
 
-  // Get or create rate limit data
+  const key = `${clientIP}:${endpoint}`;
   const existing = rateLimitStore.get(key);
+  const data = existing && existing.resetTime > now ? existing : { count: 0, resetTime: now + config.windowMs };
 
-  const rateLimitData =
-    existing && existing.resetTime > now ? existing : { count: 0, resetTime: now + config.windowMs };
+  if (data.count >= config.maxRequests) return { allowed: false, resetTime: data.resetTime };
 
-  if (rateLimitData.count >= config.maxRequests) {
-    return { allowed: false, resetTime: rateLimitData.resetTime };
-  }
-
-  // Update rate limit data
-  rateLimitData.count++;
-  rateLimitStore.set(key, rateLimitData);
-
-  return { allowed: true };
+  data.count++;
+  rateLimitStore.set(key, data);
+  return { allowed: true, resetTime: data.resetTime };
 }
 
 /**
@@ -256,7 +290,7 @@ export function withSecurity<T extends (args: ActionFunctionArgs | LoaderFunctio
 
     // Apply rate limiting
     if (options.rateLimit !== false) {
-      const rateLimitResult = checkRateLimit(request, endpoint, args.context);
+      const rateLimitResult = await checkRateLimit(request, endpoint, args.context);
 
       if (rateLimitResult.unavailable) {
         return new Response('Rate limiting requires trusted client IP configuration', {
