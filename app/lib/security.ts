@@ -2,6 +2,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from 'react-router';
 
 // In-memory fallback is only used during local development.
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
 const redisRateLimitScript = `
 local count = redis.call('INCR', KEYS[1])
 if count == 1 then
@@ -61,6 +62,7 @@ export async function checkRateLimit(
     const identity = `${clientIP}:${endpoint}:${Math.floor(now / config.windowMs)}`;
     const identityHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
     const key = `ratelimit:${Array.from(new Uint8Array(identityHash), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+
     const response = await fetch(redisUrl, {
       method: 'POST',
       headers: {
@@ -75,6 +77,7 @@ export async function checkRateLimit(
     }
 
     const payload = (await response.json()) as { result?: [number, number]; error?: string };
+
     if (payload.error || !Array.isArray(payload.result) || typeof payload.result[0] !== 'number') {
       throw new Error('Rate limit store returned an invalid response');
     }
@@ -96,7 +99,9 @@ function findRateLimitRule(endpoint: string) {
 
   return (
     entries.find(([pattern]) => pattern === endpoint) ||
-    entries.find(([pattern]) => pattern.endsWith('*') && !pattern.endsWith('/*') && endpoint.startsWith(pattern.slice(0, -1))) ||
+    entries.find(
+      ([pattern]) => pattern.endsWith('*') && !pattern.endsWith('/*') && endpoint.startsWith(pattern.slice(0, -1)),
+    ) ||
     entries.find(([pattern]) => pattern.endsWith('/*') && endpoint.startsWith(pattern.slice(0, -2)))
   );
 }
@@ -109,7 +114,9 @@ function checkInMemoryRateLimit(
 ) {
   if (rateLimitStore.size > 200) {
     for (const [storedKey, data] of rateLimitStore.entries()) {
-      if (data.resetTime <= now) rateLimitStore.delete(storedKey);
+      if (data.resetTime <= now) {
+        rateLimitStore.delete(storedKey);
+      }
     }
   }
 
@@ -117,10 +124,13 @@ function checkInMemoryRateLimit(
   const existing = rateLimitStore.get(key);
   const data = existing && existing.resetTime > now ? existing : { count: 0, resetTime: now + config.windowMs };
 
-  if (data.count >= config.maxRequests) return { allowed: false, resetTime: data.resetTime };
+  if (data.count >= config.maxRequests) {
+    return { allowed: false, resetTime: data.resetTime };
+  }
 
   data.count++;
   rateLimitStore.set(key, data);
+
   return { allowed: true, resetTime: data.resetTime };
 }
 
